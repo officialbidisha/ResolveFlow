@@ -39,7 +39,7 @@ fetch_evidence -> normalize_evidence -> classify
 ## What's real vs. mocked
 
 - GitHub evidence fetching: real REST API calls (`tools/github_client.py`), needs a `GITHUB_TOKEN`.
-- Diagnosis + review: real LLM calls via `langchain-anthropic`, needs `ANTHROPIC_API_KEY`.
+- Diagnosis + review: real LLM calls via `langchain-openai`, needs `OPENAI_API_KEY`.
 - Retrieval: a small FAISS index over a couple of repo docs — intentionally tiny for a 2-day scope, not meant to demonstrate retrieval quality at scale.
 - Classification: rule-based, not learned — deliberate, see `graph/nodes/classify.py` docstring.
 - Human approval: `interrupt()` (LangGraph's native human-in-the-loop primitive) pausing the graph before `execute`, resumed via the FastAPI `/execute/{thread_id}` endpoint.
@@ -48,7 +48,7 @@ fetch_evidence -> normalize_evidence -> classify
 
 ```bash
 uv sync                  # installs from pyproject.toml
-cp .env.example .env     # then fill in GITHUB_TOKEN + ANTHROPIC_API_KEY
+cp .env.example .env     # then fill in GITHUB_TOKEN + OPENAI_API_KEY
 ```
 
 ## Running
