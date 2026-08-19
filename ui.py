@@ -72,9 +72,40 @@ if run and issue_url:
                     "(`state[\"approved\"] is True`) and its GitHub-write logic isn't "
                     "implemented yet, so this will raise rather than post anything."
                 )
+            elif classification == "ai_investigation":
+                diagnosis = result["diagnosis"]
+                review = result["review_result"]
+
+                st.markdown("#### Diagnosis")
+                st.write(diagnosis.root_cause)
+                st.markdown(f"**Severity:** {diagnosis.severity}")
+                if diagnosis.missing_info:
+                    st.markdown("**Missing info:** " + "; ".join(diagnosis.missing_info))
+                st.markdown("**Recommended next steps:**")
+                for step in diagnosis.recommended_next_steps:
+                    st.markdown(f"- {step}")
+                st.caption("Citations: " + ", ".join(diagnosis.citations or ["(none)"]))
+
+                st.markdown("#### Independent review")
+                outcome_badge = {"approve": "green", "escalate_to_human": "orange"}.get(
+                    review.outcome, "gray"
+                )
+                st.markdown(f"**Outcome:** :{outcome_badge}[{review.outcome}]")
+                st.markdown(
+                    f"groundedness_ok: `{review.groundedness_ok}` · "
+                    f"risk_ok: `{review.risk_ok}` · "
+                    f"permission_ok: `{review.permission_ok}`"
+                )
+                st.write(review.reasoning)
+
+                st.warning(
+                    "Even on `approve`, this stops here — the human-approval "
+                    "`interrupt()` gate and `execute` wiring for this branch aren't "
+                    "built yet, so nothing gets written to GitHub regardless of outcome."
+                )
             else:
                 st.warning(
-                    f"Routed to `{classification}` — `generate_diagnosis` and "
-                    "`independent_review` aren't wired into the graph yet, so the "
-                    "pipeline stops here for now."
+                    f"Routed to `{classification}` — this is the conservative "
+                    "fallback classification, no diagnosis is attempted for it "
+                    "by design."
                 )

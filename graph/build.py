@@ -33,6 +33,8 @@ load_dotenv()
 from graph.nodes.fetch_evidence import fetch_evidence
 from graph.nodes.normalize_evidence import normalize_evidence
 from graph.nodes.classify import classify
+from graph.nodes.generate_diagnosis import generate_diagnosis
+from graph.nodes.independent_review import independent_review
 from langgraph.graph import StateGraph, END
 from graph.state import GraphState
 from graph.nodes.execute import execute
@@ -56,10 +58,28 @@ def should_route_to(state: GraphState) -> str :
 
 ## add conditional edges
 graph.add_conditional_edges("classify", should_route_to, {
-       "deterministic": "execute", "ai_investigation": END, "human_review": END
+       "deterministic": "execute", "ai_investigation": "generate_diagnosis", "human_review": END
 })
 
 graph.add_node("execute", execute)
 graph.add_edge("execute",END)
+
+graph.add_node("generate_diagnosis", generate_diagnosis)
+graph.add_node("independent_review", independent_review)
+graph.add_edge("generate_diagnosis", "independent_review")
+
+
+def should_route_review(state: GraphState) -> str:
+    return state["review_result"].outcome
+
+
+# TODO: "approve" should route to an await_approval interrupt() node, then
+# execute — not END. Wiring that (plus a checkpointer + thread_id) is next.
+# "reject_retrieve_more" is the optional loop-back-to-generate_diagnosis
+# stretch goal from independent_review.py's own docstring — not built.
+graph.add_conditional_edges("independent_review", should_route_review, {
+       "approve": END, "escalate_to_human": END, "reject_retrieve_more": END
+})
+
 compiled_graph = graph.compile()
 
