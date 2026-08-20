@@ -28,10 +28,14 @@
   never straight to execute. See graph/nodes/await_approval.py and
   graph/nodes/execute.py.
 
-Requires a checkpointer (MemorySaver here) because interrupt() needs
-somewhere to persist state across the pause — callers must invoke with a
-thread_id in config, and resume with Command(resume=...) using that same
-thread_id. See ui.py.
+Requires a checkpointer because interrupt() needs somewhere to persist
+state across the pause — callers must invoke with a thread_id in config,
+and resume with Command(resume=...) using that same thread_id.
+
+`compiled_graph` below (MemorySaver, in-process only) is what ui.py
+uses. `graph` (uncompiled) is exported too, so a caller needing a
+persistent checkpointer across process restarts — app/main.py's FastAPI
+backend, via SqliteSaver — can compile it themselves instead.
 """
 
 from dotenv import load_dotenv

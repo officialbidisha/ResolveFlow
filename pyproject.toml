@@ -21,6 +21,7 @@ dependencies = [
     "scikit-learn>=1.9.0",
     "langchain-pinecone>=0.2",
     "pinecone>=5.4",
+    "langgraph-checkpoint-sqlite>=3.1.1",
 ]
 
 [dependency-groups]
