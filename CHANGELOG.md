@@ -5,6 +5,31 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **`IssueEvidence.is_information_sparse` couldn't fire on real GitHub
+  issues.** Old rule: body under 40 raw characters *and* zero comments.
+  Empirically checked against ~380 real closed/open issues across
+  `facebook/react`, `microsoft/terminal`, `denoland/deno`, `vercel/next.js`,
+  `sveltejs/svelte`, `vitejs/vite` — zero matched. Issue templates pad
+  every report past 40 characters with headers/checkboxes regardless of
+  actual reporter effort (5th-percentile raw body length across the
+  sample: 389 chars), and active repos almost always get at least one
+  bot/triage comment, so `not self.comments` almost never holds either.
+  Net effect: this classification branch was practically unreachable from
+  real traffic.
+
+  New rule: strip markdown template scaffolding (headers, checkbox lines,
+  HTML comments) before measuring, drop the zero-comments requirement
+  entirely (a triage comment says nothing about how much the *reporter*
+  wrote), keep the 40-char threshold applied to what's left. Also handles
+  a real edge case found during testing: some issue bodies contain
+  literal `\n` text instead of real line breaks, which would otherwise
+  make the whole body read as one line and get wrongly discarded as a
+  single "header". Re-verified against the same ~380-issue sample: fires
+  on 2.1% (2/96 in a spot-check), both genuinely low-signal real issues,
+  zero false positives against a detailed real bug report used as a
+  negative control.
+
 ### Known issue
 - LangGraph logs a deprecation warning when deserializing the Pydantic
   schema types (`IssueEvidence`, `Diagnosis`, `ReviewResult`) from the
