@@ -5,19 +5,29 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
-- **Retrieval corpus is migrating from a local synthetic index to a real one.**
-  `ingest.py` now pulls closed issues from a live GitHub repo
-  (`facebook/react`), chunks them, embeds them with
-  `text-embedding-3-small`, and writes them into a Pinecone index
-  (`resolveflow-issues`). This replaces the small hand-written
-  `docs/runbook.md` / `docs/known_issues.md` corpus.
+### Next up
+- Wire `interrupt()` + `execute`'s real logic — the approval-gated GitHub
+  write path. Still the architectural centerpiece and still unbuilt.
 
-### Known issue
-- `tools/retrieval.py` has **not** been updated to query Pinecone yet — it
-  still builds a TF-IDF/FAISS index over `docs/*.md`, which no longer
-  exists. `generate_diagnosis` will fail until `retrieve_evidence` is
-  repointed at the Pinecone index. Tracked as the next task.
+## [0.5.0] — Retrieval on real Pinecone data
+
+### Changed
+- **Retrieval corpus migrated from a local synthetic index to a real one.**
+  `ingest.py` pulls closed issues from a live GitHub repo (`facebook/react`),
+  chunks them, embeds them with `text-embedding-3-small`, and writes them
+  into a Pinecone index (`resolveflow-issues`) — replacing the small
+  hand-written `docs/runbook.md` / `docs/known_issues.md` corpus.
+- `ingest.py` now creates the Pinecone index itself if it doesn't exist
+  (`pc.has_index` / `pc.create_index`, `ServerlessSpec`), instead of
+  assuming it was created manually via the console first, and resolves the
+  index host dynamically — `PINECONE_INDEX_HOST` is no longer needed in
+  `.env`.
+- `tools/retrieval.py` rewritten to query that Pinecone index directly
+  (`PineconeVectorStore.similarity_search`), replacing the old TF-IDF/FAISS
+  index over `docs/*.md`. Same `retrieve_evidence(query, k)` contract as
+  before, so `generate_diagnosis`/`independent_review` needed no changes.
+  Verified end-to-end: real query → Pinecone → structured `Diagnosis` with
+  a citation actually present in `retrieved_ids`.
 
 ## [0.4.0] — Diagnosis + independent review
 

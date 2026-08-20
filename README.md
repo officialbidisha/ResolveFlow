@@ -73,9 +73,9 @@ routes straight to `END`; nothing writes to GitHub on any path.
 |---|---|
 | `fetch_evidence` / `normalize_evidence` | ✅ Real GitHub REST calls, validated into `IssueEvidence` |
 | `classify` | ✅ Rule-based routing (deliberate — see the node's docstring) |
-| `generate_diagnosis` | ✅ Real OpenAI call, structured `Diagnosis` output with citations |
+| `generate_diagnosis` | ✅ Real OpenAI call, structured `Diagnosis` output with citations, grounded via real Pinecone retrieval |
 | `independent_review` | ✅ Separate OpenAI critique call; approve/escalate gate computed in code, not trusted from the LLM |
-| Retrieval corpus | 🚧 **Mid-migration.** `ingest.py` now builds a real Pinecone index from live GitHub issues (`facebook/react`, `text-embedding-3-small`), replacing the old synthetic `docs/*.md` corpus — but `tools/retrieval.py` still queries the now-deleted local docs. Retrieval is broken until it's repointed at Pinecone. |
+| Retrieval corpus | ✅ `ingest.py` builds a real Pinecone index (`resolveflow-issues`) from live GitHub issues (`facebook/react`, `text-embedding-3-small`), self-healing (creates the index if missing). `tools/retrieval.py` queries it directly — verified end-to-end through `generate_diagnosis`. |
 | `execute` + human approval gate | ❌ Not built. `execute()` raises `NotImplementedError`; LangGraph's `interrupt()` isn't wired into `graph/build.py` yet. This is the architectural centerpiece and the next milestone. |
 | `eval/` | ❌ Empty — no evaluation harness yet. |
 | Tests | ❌ Not written yet. |
@@ -88,7 +88,7 @@ compressed from into a solo, thinner end-to-end slice.
 
 ```bash
 uv sync                  # installs from pyproject.toml
-cp .env.example .env     # fill in GITHUB_TOKEN, OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX_HOST
+cp .env.example .env     # fill in GITHUB_TOKEN, OPENAI_API_KEY, PINECONE_API_KEY
 ```
 
 ## Running
@@ -101,9 +101,8 @@ uv run pytest                  # once tests exist
 
 ## Roadmap
 
-1. Repoint `tools/retrieval.py` at Pinecone so RAG works end-to-end again.
-2. Wire `interrupt()` + `execute`'s real logic — the approval-gated write
+1. Wire `interrupt()` + `execute`'s real logic — the approval-gated write
    path that's the whole point of the architecture.
-3. Build out `eval/` — scenario coverage across deterministic, sparse,
+2. Build out `eval/` — scenario coverage across deterministic, sparse,
    and adversarial issues.
-4. Tests for the node functions and the compiled graph.
+3. Tests for the node functions and the compiled graph.
