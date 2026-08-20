@@ -7,6 +7,7 @@ to query at runtime.
 from __future__ import annotations
 
 import os
+import time
 
 from dotenv import load_dotenv
 from langchain_core.documents import Document
@@ -48,10 +49,6 @@ def main() -> None:
     print("Ingesting...")
     docs = _build_documents()
 
-    # TODO(you): split docs, assign chunk ids, embed, create index if
-    # missing, store in Pinecone. See retrieval.py's existing _load_chunks
-    # for the id-scheme shape to match ("{source}#{chunk-index}").
-    
     #Step A : Split documents
     splitter = RecursiveCharacterTextSplitter(chunk_size = 800, chunk_overlap= 40)
     chunks = splitter.split_documents(docs)
@@ -67,7 +64,19 @@ def main() -> None:
     ## Step C: embedding the chunks and writing them into the vectorstore
     embedding = OpenAIEmbeddings(model = EMBEDDING_MODEL, dimensions= EMBEDDING_DIMENSION)
     pc = Pinecone(api_key = os.environ["PINECONE_API_KEY"])
-    index = pc.Index(host=os.environ["PINECONE_INDEX_HOST"])
+
+    if not pc.has_index(INDEX_NAME):
+        print(f"Index {INDEX_NAME!r} not found, creating it...")
+        pc.create_index(
+            name=INDEX_NAME,
+            dimension=EMBEDDING_DIMENSION,
+            metric="cosine",
+            spec=ServerlessSpec(cloud="aws", region="us-east-1"),
+        )
+        while not pc.describe_index(INDEX_NAME).status["ready"]:
+            time.sleep(1)
+
+    index = pc.Index(host=pc.describe_index(INDEX_NAME).host)
     vector_store = PineconeVectorStore(index=index, embedding = embedding)
 
     ids = [chunk.metadata["id"] for chunk in chunks]
