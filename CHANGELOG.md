@@ -3,6 +3,48 @@
 All notable changes to ResolveFlow are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] — React frontend, deployed
+
+### Added
+- `app/main.py`: FastAPI backend exposing the compiled graph over HTTP
+  (`POST /api/analyze`, `POST /api/resume/{thread_id}`). Compiles the
+  graph with `SqliteSaver` (persistent, opened once at startup) instead
+  of `ui.py`'s `MemorySaver` — a real HTTP API has "analyze" and
+  "resume" land on separate requests, sometimes seconds apart, so the
+  checkpointer has to survive between them, not just within one Python
+  process's memory.
+- `graph/build.py` now exports the uncompiled `graph` alongside
+  `compiled_graph`, so callers needing a different checkpointer than
+  `ui.py`'s `MemorySaver` can compile it themselves.
+- `frontend/`: React + TypeScript (Vite) UI, same visual identity as the
+  published architecture-diagram artifact (IBM Plex Mono/Sans; amber =
+  approval gate, blue = reasoning, green = write, matching the graph's
+  node roles). Renders evidence, diagnosis, independent review (with
+  groundedness/risk/permission check pills), and the pending-approval
+  gate with Approve/Reject driving the real `interrupt()`/resume flow.
+
+### Deployed
+- Backend on Render (`resolveflow-1h99.onrender.com`) — free tier, so
+  it spins down after inactivity (~50s cold start on the first request
+  after idle).
+- Frontend on Vercel (`resolveflow-web-officialbidishas-projects.vercel.app`).
+- Verified end-to-end on the live production URLs, both outcomes: a real
+  issue reaching `escalate_to_human`, and a real issue reaching
+  `pending_approval` → reject, confirming the SQLite-backed checkpointer
+  actually persists state across genuinely separate HTTP requests in
+  production, not just in a local test.
+
+### Known issue
+- Deploying via `deploy_to_vercel` hit a real platform quirk: a second
+  deployment to an already-existing project consistently 403'd
+  ("permission" error) regardless of payload size, while a first deploy
+  to a brand-new project name always succeeded. Worked around by
+  deploying the complete, final build in a single shot to a fresh
+  project rather than iterating. New Vercel projects also default to
+  "Vercel Authentication" (SSO-gated deployments) — disabled manually
+  via Project Settings → Deployment Protection so the demo is actually
+  publicly viewable.
+
 ## [Unreleased]
 
 ### Changed
