@@ -64,5 +64,14 @@ def main() -> None:
         chunk.metadata["id"] = f"{source}#{index}"
         counts[source] = index+1
 
+    ## Step C: embedding the chunks and writing them into the vectorstore
+    embedding = OpenAIEmbeddings(model = EMBEDDING_MODEL, dimensions= EMBEDDING_DIMENSION)
+    pc = Pinecone(api_key = os.environ["PINECONE_API_KEY"])
+    index = pc.Index(host=os.environ["PINECONE_INDEX_HOST"])
+    vector_store = PineconeVectorStore(index=index, embedding = embedding)
+
+    ids = [chunk.metadata["id"] for chunk in chunks]
+    vector_store.add_documents(documents=chunks,ids=ids)
+
 if __name__ == "__main__":
     main()
