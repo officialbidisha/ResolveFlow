@@ -5,9 +5,57 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Known issue
+- LangGraph logs a deprecation warning when deserializing the Pydantic
+  schema types (`IssueEvidence`, `Diagnosis`, `ReviewResult`) from the
+  checkpoint — msgpack doesn't recognize them as registered types yet.
+  Harmless today; will need `allowed_msgpack_modules` before a future
+  LangGraph version enforces `LANGGRAPH_STRICT_MSGPACK`.
+
 ### Next up
-- Wire `interrupt()` + `execute`'s real logic — the approval-gated GitHub
-  write path. Still the architectural centerpiece and still unbuilt.
+- `eval/` — scenario coverage across deterministic, sparse, and
+  adversarial issues. Still empty.
+- Tests for the node functions and the compiled graph.
+
+## [0.6.0] — Approval-gated execution
+
+### Added
+- `graph/nodes/await_approval.py`: builds the exact GitHub comment/label
+  execute will post — a fixed template for `deterministic` (failing CI),
+  or built from `diagnosis.root_cause`/`recommended_next_steps` for an
+  approved `ai_investigation` diagnosis — then pauses via LangGraph's
+  `interrupt()`. Every path to `execute` goes through this one gate; none
+  skip it.
+- `execute`: implemented for real. Posts `state["proposed_action"]`
+  **verbatim** via `tools/github_client.py` (`post_comment` + optional
+  `add_label`) — never recomputes the action after a human approved it.
+  Still refuses to run at all without `state["approved"] is True`,
+  checked in the node itself as a second guarantee independent of graph
+  routing.
+- `graph/build.py`: compiled with a `MemorySaver` checkpointer (required
+  for `interrupt()`/resume). `deterministic` and the `independent_review`
+  `approve` outcome both route to `await_approval`, which then routes to
+  `execute` only if `state["approved"]` — otherwise straight to `END`.
+- `ui.py`: real approve/reject flow. Each analysis run gets its own
+  `thread_id`; hitting `await_approval` shows the exact proposed
+  comment/label with Approve/Reject buttons, which resume the paused
+  thread via `Command(resume=True/False)`.
+
+### Verified
+- End-to-end through the real compiled graph (mocked GitHub reads/writes,
+  real OpenAI + Pinecone calls): `ai_investigation` → approve → interrupt
+  pauses with the exact proposed action → resume → `execute` posts that
+  exact same content, confirmed by assertion, not inspection.
+- `escalate_to_human` outcome routes to `END` with no crash, no proposed
+  action generated.
+- `execute` still raises `PermissionError` when called without
+  `approved=True`, called directly.
+- `deterministic` branch's `await_approval`/`execute` logic verified
+  directly with synthetic state, not through a live run — `check_runs` is
+  hardcoded `[]` in `fetch_evidence.py` (a pre-existing, deliberate scope
+  cut noted in that file's own docstring, not something this change
+  touches), so `classify` can't actually reach `deterministic` from a
+  real GitHub fetch yet.
 
 ## [0.5.0] — Retrieval on real Pinecone data
 

@@ -25,6 +25,7 @@ class GraphState(TypedDict, total=False):
     diagnosis: Diagnosis
     review_result: ReviewResult
     approved: bool
+    proposed_action: dict
     execution_result: dict
     raw_evidence: dict
     retrieved_ids: list[str]

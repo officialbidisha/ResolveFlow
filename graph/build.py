@@ -1,31 +1,37 @@
 """Assembles the StateGraph: wires nodes + conditional edges together.
 
-Not implemented yet — needs langgraph installed first (see README "Setup").
-Shape to build toward:
-
     START -> fetch_evidence -> normalize_evidence -> classify
                                                         |
                         (conditional on state["classification"])
                     /                 |                    \\
           deterministic       ai_investigation          human_review
                 |                     |                       |
-            execute*          generate_diagnosis            END
+        await_approval        generate_diagnosis             END
                 |                     |
-               END          independent_review
+               ...          independent_review
                                       |
                     (conditional on review_result.outcome)
                     /                |                  \\
                approve        escalate_to_human   reject_retrieve_more
                   |                   |                    |
-              [interrupt]           END          generate_diagnosis (loop)
-                  |
-               execute*
-                  |
-                 END
+          await_approval             END          generate_diagnosis (loop,
+                  |                                     not built)
+        (conditional on state["approved"])
+              /        \\
+          execute*      END
+              |
+             END
 
-* execute is the only node with side effects, and only runs after either
-  the deterministic-path skips review entirely (still requires `approved`,
-  see graph/nodes/execute.py) or the interrupt() resumes with approved=True.
+* execute is the only node with side effects, and only runs after
+  await_approval's interrupt() resumes with approved=True — both paths
+  (deterministic and ai_investigation-approved) go through the same gate,
+  never straight to execute. See graph/nodes/await_approval.py and
+  graph/nodes/execute.py.
+
+Requires a checkpointer (MemorySaver here) because interrupt() needs
+somewhere to persist state across the pause — callers must invoke with a
+thread_id in config, and resume with Command(resume=...) using that same
+thread_id. See ui.py.
 """
 
 from dotenv import load_dotenv
@@ -35,6 +41,8 @@ from graph.nodes.normalize_evidence import normalize_evidence
 from graph.nodes.classify import classify
 from graph.nodes.generate_diagnosis import generate_diagnosis
 from graph.nodes.independent_review import independent_review
+from graph.nodes.await_approval import await_approval
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from graph.state import GraphState
 from graph.nodes.execute import execute
@@ -58,11 +66,22 @@ def should_route_to(state: GraphState) -> str :
 
 ## add conditional edges
 graph.add_conditional_edges("classify", should_route_to, {
-       "deterministic": "execute", "ai_investigation": "generate_diagnosis", "human_review": END
+       "deterministic": "await_approval", "ai_investigation": "generate_diagnosis", "human_review": END
 })
 
+graph.add_node("await_approval", await_approval)
 graph.add_node("execute", execute)
-graph.add_edge("execute",END)
+graph.add_edge("execute", END)
+
+
+def should_execute(state: GraphState) -> str:
+    return "execute" if state.get("approved") else "rejected"
+
+
+graph.add_conditional_edges("await_approval", should_execute, {
+    "execute": "execute",
+    "rejected": END,
+})
 
 graph.add_node("generate_diagnosis", generate_diagnosis)
 graph.add_node("independent_review", independent_review)
@@ -73,13 +92,13 @@ def should_route_review(state: GraphState) -> str:
     return state["review_result"].outcome
 
 
-# TODO: "approve" should route to an await_approval interrupt() node, then
-# execute — not END. Wiring that (plus a checkpointer + thread_id) is next.
 # "reject_retrieve_more" is the optional loop-back-to-generate_diagnosis
-# stretch goal from independent_review.py's own docstring — not built.
+# stretch goal from independent_review.py's own docstring — not built;
+# independent_review never actually returns that outcome today, only
+# "approve" or "escalate_to_human".
 graph.add_conditional_edges("independent_review", should_route_review, {
-       "approve": END, "escalate_to_human": END, "reject_retrieve_more": END
+       "approve": "await_approval", "escalate_to_human": END, "reject_retrieve_more": END
 })
 
-compiled_graph = graph.compile()
+compiled_graph = graph.compile(checkpointer=MemorySaver())
 
