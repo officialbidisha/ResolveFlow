@@ -32,6 +32,32 @@ def get_issue(repo: str, issue_number: int) -> dict:
     return resp.json()
 
 
+def list_closed_issues(repo: str, count: int = 40) -> list[dict]:
+    """Returns up to `count` closed issues, newest-updated first.
+
+    The GitHub issues endpoint also returns pull requests (a PR is an issue
+    under the hood) — each has a "pull_request" key that plain issues don't,
+    so those are filtered out here rather than left for callers to notice.
+    Paginates in pages of 100 (GitHub's max per_page) until `count` is met.
+    """
+    issues: list[dict] = []
+    page = 1
+    while len(issues) < count:
+        resp = requests.get(
+            f"{GITHUB_API}/repos/{repo}/issues",
+            headers=_headers(),
+            params={"state": "closed", "sort": "updated", "per_page": 100, "page": page},
+            timeout=TIMEOUT,
+        )
+        resp.raise_for_status()
+        batch = resp.json()
+        if not batch:
+            break
+        issues.extend(item for item in batch if "pull_request" not in item)
+        page += 1
+    return issues[:count]
+
+
 def get_comments(repo: str, issue_number: int) -> list[dict]:
     resp = requests.get(
         f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/comments", headers=_headers(), timeout=TIMEOUT
