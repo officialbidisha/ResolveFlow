@@ -4,6 +4,9 @@
 never touches GitHub without passing an independent LLM review *and* an
 explicit human approval.**
 
+<img width="612" height="663" alt="Screenshot 2026-08-20 at 6 35 12 PM" src="https://github.com/user-attachments/assets/08bebe51-ee23-411f-837b-1ebd42069cba" />
+
+
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1c1c1c)
 ![status](https://img.shields.io/badge/status-approval--gated%20execution%20live-brightgreen)
