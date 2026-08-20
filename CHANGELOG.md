@@ -5,6 +5,45 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Corpus grown from 40 single-repo issues (~130 chunks) to ~600 issues
+  across 4 real repos (~2,750 chunks)**: `facebook/react`,
+  `langchain-ai/langchain`, `microsoft/terminal`, `vercel/next.js`. A
+  40-issue single-repo corpus meant a random real issue almost never had
+  a genuine topical match to retrieve against — every "real diagnosis"
+  demo required hand-constructed evidence.
+- `ingest.py`'s `source` id is now repo-prefixed
+  (`f"{repo}-issue-{number}"` instead of `f"issue-{number}"`) — plain
+  issue numbers collide across repos (`facebook/react#10` and
+  `langchain-ai/langchain#10` would otherwise both become `"issue-10"`,
+  corrupting the citation id scheme).
+- `ingest.py` now clears the index before re-ingesting
+  (`index.delete(delete_all=True)`) — re-running it is idempotent again,
+  since the id-scheme change would otherwise leave old-scheme vectors as
+  stale duplicates rather than getting overwritten.
+
+### Verified
+- On the bigger corpus, a real, empty-body issue
+  (`facebook/react#36932`, "experimental_taintUniqueValue throws
+  RangeError for large binary values") retrieved two real near-duplicate
+  reports with actual technical detail and produced a **correct**,
+  specific root cause ("`String.fromCharCode.apply` exceeds the JS
+  engine's max-argument limit on large buffers") — versus a confidently
+  *wrong* diagnosis ("React DevTools extension compatibility issue") on
+  the same query against the old 40-issue corpus, which retrieved three
+  unrelated chunks. `independent_review` correctly escalated it anyway
+  (severity: high always escalates by design) — grounded and correct
+  doesn't override the risk gate.
+
+### Known limitation
+- `groundedness_ok` only checks that a citation id was among the
+  *retrieved* snippets — never that the cited text actually *supports*
+  the claim. The old-corpus `taintUniqueValue` run above is the concrete
+  case: citations were technically "grounded" (retrieved ids) while the
+  diagnosis was factually wrong. A real fix would need a semantic
+  check — e.g. a second pass asking whether each citation's text actually
+  entails the claim it's attached to — not just id membership.
+
 ### Fixed
 - **`IssueEvidence.is_information_sparse` couldn't fire on real GitHub
   issues.** Old rule: body under 40 raw characters *and* zero comments.

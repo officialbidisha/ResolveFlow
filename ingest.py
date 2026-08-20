@@ -20,28 +20,36 @@ from tools.github_client import list_closed_issues
 
 load_dotenv()
 
-REPO = "facebook/react"
-ISSUE_COUNT = 40
+REPOS = [
+    "facebook/react",
+    "langchain-ai/langchain",
+    "microsoft/terminal",
+    "vercel/next.js",
+]
+ISSUE_COUNT_PER_REPO = 150
 INDEX_NAME = "resolveflow-issues"
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSION = 512
 
 
 def _build_documents() -> list[Document]:
-    """Fetch closed issues and turn each into one Document (pre-split).
+    """Fetch closed issues from every repo in REPOS and turn each into one
+    Document (pre-split).
 
-    TODO(you): call list_closed_issues, and for each issue build a
-    Document(page_content=..., metadata={"source": f"issue-{number}"}).
-    Decide what to do about issues with body=None.
+    source is repo-prefixed (f"{repo}#{number}", slashes turned to dashes)
+    rather than just f"issue-{number}" — plain issue numbers collide across
+    repos (facebook/react#10 and langchain-ai/langchain#10 would otherwise
+    both become "issue-10", corrupting the id scheme retrieval.py depends
+    on for citations).
     """
-    issues = list_closed_issues(REPO, count=ISSUE_COUNT)
     documents = []
-    for issue in issues:
-        page_content = f"Issue #{issue['number']}: {issue['title']} \n\n {issue['body'] if issue['body'] is not None else ''}"
-        doc = Document  (page_content=page_content, metadata= {
-            "source": f"issue-{issue['number']}"
-        })
-        documents.append(doc)
+    for repo in REPOS:
+        issues = list_closed_issues(repo, count=ISSUE_COUNT_PER_REPO)
+        for issue in issues:
+            page_content = f"Issue #{issue['number']}: {issue['title']} \n\n {issue['body'] if issue['body'] is not None else ''}"
+            source = f"{repo.replace('/', '-')}-issue-{issue['number']}"
+            doc = Document(page_content=page_content, metadata={"source": source, "repo": repo})
+            documents.append(doc)
     return documents
 
 
@@ -77,6 +85,16 @@ def main() -> None:
             time.sleep(1)
 
     index = pc.Index(host=pc.describe_index(INDEX_NAME).host)
+
+    # Old runs used a plain "issue-{number}" id scheme (single-repo, no repo
+    # prefix) — those ids don't collide with the new repo-prefixed scheme,
+    # so they'd just sit there as stale duplicates rather than get
+    # overwritten. Clear the index first so re-running this script is
+    # actually idempotent, not additive.
+    if index.describe_index_stats()["total_vector_count"] > 0:
+        print("Clearing existing vectors before re-ingesting...")
+        index.delete(delete_all=True)
+
     vector_store = PineconeVectorStore(index=index, embedding = embedding)
 
     ids = [chunk.metadata["id"] for chunk in chunks]
