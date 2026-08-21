@@ -6,6 +6,26 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **`eval/` — a safety-gate regression suite.** Scope, deliberately:
+  `classify()`'s routing precedence, `independent_review()`'s
+  groundedness/risk gate, and `execute()`'s permission check +
+  verbatim-posting (with `github_token` pass-through) — not
+  `await_approval()`'s `interrupt()` mechanics (integration-level, see
+  `docs/CHECKPOINTING.md`) or `generate_diagnosis`'s output quality (a
+  capability eval, different bar, still unbuilt). Deliberately balanced
+  task set — not every task is adversarial, since a gate that blocks
+  everything would trivially score 100% and prove nothing (e.g. a
+  failing-CI task that should reach `deterministic`, a grounded low-severity
+  diagnosis that should `approve`). Code-graded throughout;
+  `independent_review`'s tasks make one real OpenAI call each (for the
+  `reasoning` field only — the gate booleans are computed in code, before
+  that call, so this exercises the real production function, not a
+  reimplementation). GitHub writes are mocked in `execute`'s tasks — this
+  suite never touches real GitHub. This is a regression suite, not a
+  capability one: the bar is 100% forever, and semantically it's
+  `pass^k` — one bypassed gate across any number of trials is a critical
+  failure, never an average. Run with `uv run python -m eval.harness`;
+  writes `eval/results.json`, exits non-zero on any failure (CI-gateable).
 - **GitHub OAuth ("Sign in with GitHub") so any visitor can use the live
   app under their own identity.** Root cause: every request previously ran
   under one shared `GITHUB_TOKEN` (the deployment owner's), so a stranger

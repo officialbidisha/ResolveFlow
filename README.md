@@ -90,7 +90,7 @@ independent guarantee on top of the graph routing.
 | `execute` + human approval gate | ✅ `await_approval` builds the proposed comment/label and pauses via `interrupt()`; every path to `execute` goes through it. `execute` posts that exact payload via `tools/github_client.py`, gated on `state["approved"]`. The deployed FastAPI backend drives the real approve/reject flow via `Command(resume=...)`, checkpointed with `AsyncPostgresSaver`. Verified end-to-end (mocked GitHub reads/writes, real OpenAI + Pinecone calls): interrupt payload and posted content match exactly. See [`docs/CHECKPOINTING.md`](./docs/CHECKPOINTING.md) for the resume mechanism in detail, with a sequence diagram. |
 | React frontend + FastAPI backend | ✅ `frontend/` (Vite + React + TypeScript) talks to `app/main.py` (FastAPI) over HTTP — the only deployed surface. Backend is fully async and uses `AsyncPostgresSaver` (a real Postgres instance) as its checkpointer — not local SQLite, which Render's free-tier ephemeral disk wipes on every spin-down/spin-up, silently losing any paused approval. Deployed: frontend on Vercel, backend on Render. Verified end-to-end on the live production URLs. |
 | GitHub OAuth ("Sign in with GitHub") | ✅ Any visitor can sign in with their own GitHub account; reads/writes then run as *them*, not the deployment owner's shared `GITHUB_TOKEN`. `app/db.py` adds a `sessions` table (opaque cookie -> real token, kept server-side), a `thread_owners` table (a paused run can only be resumed by the session that started it), and a per-user `analyze_calls` daily cap — all in the same Postgres as the checkpointer, on a separate connection pool. The owner's `OPENAI_API_KEY`/`PINECONE_API_KEY` still fund every diagnosis regardless of who's asking, which is exactly what the daily cap bounds. |
-| `eval/` | ❌ Empty — no evaluation harness yet. |
+| `eval/` | 🟡 Safety-gate regression suite: `classify()`'s routing precedence, `independent_review()`'s groundedness/risk gate, `execute()`'s permission check + verbatim-posting (GitHub writes mocked — never real). Code-graded, `pass^k` semantics (any single failure across trials is a critical bug, not an average). Run with `uv run python -m eval.harness`. Not yet built: a capability suite for `generate_diagnosis` output quality (model-graded, different bar — expected to improve over time, not sit at 100%). |
 | Tests | ❌ Not written yet. |
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for the build history, and
@@ -125,6 +125,7 @@ Live: see the badges/links above. No local UI is needed to try it — the deploy
 
 ## Roadmap
 
-1. Build out `eval/` — scenario coverage across deterministic, sparse,
-   and adversarial issues.
+1. A capability eval for `generate_diagnosis` — model-graded diagnosis
+   quality against real issues, expected to improve over time (unlike
+   `eval/`'s existing safety-gate suite, which should sit at 100%).
 2. Tests for the node functions and the compiled graph.
