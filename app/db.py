@@ -17,7 +17,7 @@ from datetime import date
 
 from psycopg_pool import AsyncConnectionPool
 
-DAILY_ANALYZE_LIMIT = 10
+DAILY_ANALYZE_LIMIT = 30
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (

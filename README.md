@@ -23,6 +23,10 @@ reaches a human for approval, and the single node allowed to write to
 GitHub refuses to run without an explicit `approved` flag — checked in the
 node itself, not just at an API boundary.
 
+**Contents:** [Why this exists](#why-this-exists) · [Architecture](#architecture)
+· [Core concepts](#core-concepts) · [Status](#status) · [Setup](#setup) ·
+[Running](#running) · [Roadmap](#roadmap)
+
 ## Why this exists
 
 This is a portfolio project, built to show a real, working slice of
@@ -77,6 +81,94 @@ checkpointer, see `graph/build.py`).
 approval gate, never recomputed — and refuses to run at all without
 `state["approved"] is True`, checked in the node itself as a second,
 independent guarantee on top of the graph routing.
+
+## Core concepts
+
+The interesting engineering in this project isn't any single LLM call —
+it's the handful of structural decisions that keep those calls from being
+trusted more than they've earned.
+
+### Reasoning and execution are different code paths, not different prompts
+
+Every node up through `independent_review` only ever *proposes*.
+`execute` is the only function in the codebase allowed to call
+`tools/github_client.py`'s writes, and it isn't reachable except through
+`await_approval`'s gate — not by graph routing convention, but because
+`execute` itself refuses to run without `state["approved"] is True`,
+checked in the node body. If a future refactor added a shortcut edge
+straight to `execute`, this check would still catch it. The alternative —
+trusting a prompt to "always ask before acting" — fails exactly when it's
+needed most, since that's a behavior, not a boundary.
+
+### Independent review is a second call, not a second opinion from the same call
+
+`independent_review` critiques `generate_diagnosis`'s output with a
+separate `ChatOpenAI` invocation and its own prompt — "independent" is
+enforced by *not sharing a reasoning trace*, not by asking the same model
+to "double check itself" in one call. More importantly, the actual
+approve/escalate decision (`groundedness_ok`, `risk_ok`, `permission_ok`)
+is three booleans **computed in Python**, not parsed from the LLM's
+response. The second model call only ever produces `reasoning` — a
+human-readable critique nobody's approval hinges on. This is the general
+shape for any "LLM-as-judge" pattern that has to be trustworthy: the
+judge explains, code decides.
+
+### RAG grounding is checked, not assumed
+
+A citation being a real, retrieved snippet id used to be enough to count
+as "grounded" — but a real id can still point at a snippet that's barely
+related to the issue at hand, if that's simply the closest match a small
+corpus has to offer. `tools/retrieval.py` now returns each snippet's
+cosine similarity alongside its text; `independent_review.py` requires
+every cited id to clear `MIN_RELEVANCE_SCORE` (0.35, picked by directly
+measuring real query scores — see the module docstring for the actual
+numbers, not a guess) before counting as grounded. A genuinely novel
+issue with nothing similar in the corpus now correctly falls through to
+`escalate_to_human`, instead of a confident-sounding diagnosis getting
+rubber-stamped on noise. This is the retrieval-quality analogue of the
+same principle above: don't let "the model cited something" stand in for
+"the model cited something real."
+
+### A paused run is real state, not a client-side illusion
+
+`await_approval` doesn't just show a preview and wait for a button click
+— it calls LangGraph's `interrupt()`, which actually **suspends the
+graph's execution mid-run**. Resuming requires the same `thread_id` and a
+real checkpointer (`AsyncPostgresSaver` in production; Render's free-tier
+disk is ephemeral, so a local-file checkpointer would silently lose every
+pending approval across a container recycle). "Approve" and "reject" on
+the frontend are `Command(resume=True/False)` calls into a graph that
+has been sitting paused in Postgres, possibly for hours, across
+completely separate HTTP requests. See
+[`docs/CHECKPOINTING.md`](./docs/CHECKPOINTING.md) for the mechanism in
+detail, with a sequence diagram.
+
+### Writes run as the person who approved them
+
+The live app lets any GitHub user sign in and drive an analysis — reads
+and writes for that run use *their* OAuth token
+(`state["github_token"]`), not one shared credential belonging to the
+deployment owner. That's not just an auth nicety: it's what makes "the
+person approving this posted it" a statement GitHub itself can verify,
+rather than something ResolveFlow merely claims in its UI. It also means
+GitHub's own permission model does real work for free — a visitor
+analyzing someone else's repo can comment (open to any authenticated
+user) but can't necessarily add a label (needs triage/write access on
+that repo), and `execute.py` treats that as a partial success rather
+than crashing the whole request (see `CHANGELOG.md`).
+
+### Two different bars for two different kinds of eval
+
+`eval/`'s suite (`uv run python -m eval.harness`) is a **regression**
+suite: `classify()`'s routing precedence, `independent_review()`'s gate,
+`execute()`'s permission check — each has one unambiguous correct answer,
+and the bar is 100% forever (`pass^k`: one bypassed gate across any
+number of trials is a critical failure, not something to average away).
+That's a different bar from a **capability** eval on
+`generate_diagnosis`'s actual diagnosis quality, which is model-graded,
+expected to improve over time, and never was going to sit at 100% — see
+the Roadmap. Conflating the two is a common mistake: a safety gate that
+"mostly" holds isn't a safety gate.
 
 ## Status
 

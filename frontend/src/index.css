@@ -31,11 +31,38 @@ body {
 }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(760px 420px at 15% -8%, rgba(127, 163, 234, 0.09), transparent 60%),
+    radial-gradient(680px 380px at 100% 12%, rgba(217, 164, 65, 0.05), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--sans);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--reason);
+  color: #0c1220;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-2);
+  border: 3px solid var(--bg);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
 }
 
 #root {
@@ -49,6 +76,23 @@ body {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ---------- header ---------- */
@@ -118,6 +162,11 @@ body {
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;
+  background: linear-gradient(115deg, var(--text) 35%, var(--reason) 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  width: fit-content;
 }
 
 .thesis {
@@ -155,6 +204,7 @@ body {
 
 .analyze-form input:focus {
   border-color: var(--reason);
+  box-shadow: 0 0 0 3px rgba(127, 163, 234, 0.16);
 }
 
 .analyze-form input::placeholder {
@@ -166,6 +216,10 @@ body {
 }
 
 .analyze-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   background: var(--reason);
   color: #0c1220;
   border: none;
@@ -175,12 +229,18 @@ body {
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;
-  transition: filter 0.15s ease;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset, 0 6px 16px rgba(127, 163, 234, 0.18);
+  transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   white-space: nowrap;
 }
 
 .analyze-form button:hover:not(:disabled) {
   filter: brightness(1.08);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset, 0 8px 20px rgba(127, 163, 234, 0.28);
+}
+
+.analyze-form button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .analyze-form button:disabled {
@@ -233,6 +293,17 @@ body {
   padding: 13px 16px;
   font-size: 14px;
   border: 1px solid transparent;
+  animation: fadeInUp 0.35s ease both;
+}
+
+.spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(12, 18, 32, 0.3);
+  border-top-color: currentColor;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
 }
 
 .banner-error {
@@ -258,11 +329,13 @@ body {
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 22px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, 0 12px 28px -16px rgba(0, 0, 0, 0.55);
+  animation: fadeInUp 0.4s ease both;
 }
 
 .card-head {
@@ -313,8 +386,9 @@ body {
   align-items: center;
   font-family: var(--mono);
   font-size: 11.5px;
+  font-weight: 500;
   letter-spacing: 0.03em;
-  padding: 3px 9px;
+  padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid transparent;
   text-transform: lowercase;
@@ -467,7 +541,9 @@ body {
 
 .card-gate {
   border-color: var(--gate);
-  background: linear-gradient(180deg, rgba(217, 164, 65, 0.06), transparent 40%), var(--surface);
+  background: linear-gradient(180deg, rgba(217, 164, 65, 0.08), transparent 45%), var(--surface);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, 0 0 0 1px rgba(217, 164, 65, 0.12),
+    0 16px 32px -18px rgba(217, 164, 65, 0.25);
 }
 
 .section-label-gate {
@@ -508,6 +584,9 @@ body {
 
 .btn-approve,
 .btn-reject {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   border-radius: 8px;
   padding: 11px 18px;
   font-family: var(--sans);
@@ -515,16 +594,18 @@ body {
   font-size: 14px;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: filter 0.15s ease, background 0.15s ease;
+  transition: filter 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-approve {
   background: var(--write);
   color: #08170f;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset, 0 8px 20px rgba(94, 201, 141, 0.22);
 }
 
 .btn-approve:hover:not(:disabled) {
   filter: brightness(1.08);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset, 0 10px 24px rgba(94, 201, 141, 0.32);
 }
 
 .btn-reject {
@@ -536,6 +617,11 @@ body {
 .btn-reject:hover:not(:disabled) {
   border-color: var(--text-faint);
   color: var(--text);
+}
+
+.btn-approve:active:not(:disabled),
+.btn-reject:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .btn-approve:disabled,

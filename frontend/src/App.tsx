@@ -121,7 +121,7 @@ export default function App() {
         <div className="banner banner-info">
           Sign in with your own GitHub account to analyze an issue — reads/writes run as
           you, not the deployment owner. Limited to{" "}
-          <span className="mono">10 analyses/day</span> per account.
+          <span className="mono">30 analyses/day</span> per account.
         </div>
       )}
 
@@ -135,6 +135,7 @@ export default function App() {
           aria-label="GitHub issue URL"
         />
         <button type="submit" disabled={busy || !user}>
+          {phase === "analyzing" && <span className="spinner" />}
           {phase === "analyzing" ? "Analyzing…" : "Analyze"}
         </button>
       </form>
@@ -276,6 +277,7 @@ export default function App() {
               disabled={busy}
               onClick={() => handleDecision(true)}
             >
+              {phase === "resuming" && <span className="spinner" />}
               {phase === "resuming" ? "Posting…" : "Approve — post to GitHub"}
             </button>
             <button
