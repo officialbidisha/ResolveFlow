@@ -37,7 +37,7 @@ export for local/ad-hoc use (a REPL, a quick script, tests) — nothing
 resume-worthy across separate requests should rely on it. `graph`
 (uncompiled) is exported too, so a caller needing a persistent
 checkpointer across process restarts — app/main.py's FastAPI backend,
-via SqliteSaver — can compile it themselves instead. The deployed app
+via AsyncPostgresSaver — can compile it themselves instead. The deployed app
 (frontend on Vercel, backend on Render) is the only live surface; there
 is no in-process UI anymore.
 """
@@ -54,6 +54,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from graph.state import GraphState
 from graph.nodes.execute import execute
+from graph.serde import get_serde
 
 
 graph = StateGraph(GraphState)
@@ -108,5 +109,5 @@ graph.add_conditional_edges("independent_review", should_route_review, {
        "approve": "await_approval", "escalate_to_human": END, "reject_retrieve_more": END
 })
 
-compiled_graph = graph.compile(checkpointer=MemorySaver())
+compiled_graph = graph.compile(checkpointer=MemorySaver(serde=get_serde()))
 

@@ -6,18 +6,23 @@ easily land on separate HTTP requests seconds apart, possibly on
 different worker threads, so interrupt()/resume needs a checkpointer
 that survives between them, not one scoped to a single Python process's
 memory (that's what graph/build.py's MemorySaver-backed `compiled_graph`
-is for — local/ad-hoc use only). SqliteSaver, opened once at startup and
-kept open for the app's lifetime, does that; the sqlite file lives on
-the backend host's disk.
+is for — local/ad-hoc use only).
 
-Deliberately not async: the graph's nodes (GitHub/OpenAI/Pinecone calls)
-are synchronous, and FastAPI runs sync `def` endpoints in a threadpool
-automatically. SqliteSaver opens its connection with check_same_thread=
-False for exactly this reason.
+Checkpointer is AsyncPostgresSaver, not SqliteSaver — a real Postgres
+instance survives container recycling, unlike a local sqlite file on
+Render's free-tier disk, which is wiped on every spin-down/spin-up (no
+persistent volume on the free plan). AsyncPostgresSaver has no sync
+interface, which is why this file is fully async now: `ainvoke()`
+instead of `invoke()`, `async def` endpoints, `await saver.setup()`.
+Graph nodes themselves stay synchronous (GitHub/OpenAI/Pinecone calls
+via `requests`/SDKs, not `httpx`/`aiohttp`) — LangGraph's `ainvoke()`
+runs sync node functions in a thread pool executor automatically, so
+nothing in graph/nodes/*.py needed to change for this.
 """
 
 from __future__ import annotations
 
+import os
 import uuid
 from contextlib import asynccontextmanager
 
@@ -27,21 +32,22 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Command
 from pydantic import BaseModel
 
 from graph.build import graph
+from graph.serde import get_serde
 
-DB_PATH = "checkpoints.db"
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 _state: dict = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    with SqliteSaver.from_conn_string(DB_PATH) as saver:
-        saver.setup()
+    async with AsyncPostgresSaver.from_conn_string(DATABASE_URL, serde=get_serde()) as saver:
+        await saver.setup()
         _state["compiled_graph"] = graph.compile(checkpointer=saver)
         yield
     _state.clear()
@@ -86,26 +92,26 @@ def _serialize(thread_id: str, result: dict) -> dict:
 
 
 @app.get("/api/health")
-def health() -> dict:
+async def health() -> dict:
     return {"status": "ok"}
 
 
 @app.post("/api/analyze")
-def analyze(req: AnalyzeRequest) -> dict:
+async def analyze(req: AnalyzeRequest) -> dict:
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     try:
-        result = _state["compiled_graph"].invoke({"issue_url": req.issue_url}, config)
+        result = await _state["compiled_graph"].ainvoke({"issue_url": req.issue_url}, config)
     except Exception as exc:  # noqa: BLE001 -- surfacing any pipeline failure to the client is the point
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return _serialize(thread_id, result)
 
 
 @app.post("/api/resume/{thread_id}")
-def resume(thread_id: str, req: ResumeRequest) -> dict:
+async def resume(thread_id: str, req: ResumeRequest) -> dict:
     config = {"configurable": {"thread_id": thread_id}}
     try:
-        result = _state["compiled_graph"].invoke(Command(resume=req.approved), config)
+        result = await _state["compiled_graph"].ainvoke(Command(resume=req.approved), config)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return _serialize(thread_id, result)

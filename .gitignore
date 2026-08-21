@@ -7,4 +7,3 @@ __pycache__/
 eval/results.json
 .vscode/
 .DS_Store
-checkpoints.db*

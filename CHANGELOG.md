@@ -5,6 +5,36 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Registered the Pydantic state schemas with LangGraph's checkpoint
+  serializer.** `graph/serde.py` builds a `JsonPlusSerializer` with
+  `allowed_msgpack_modules` covering `IssueEvidence`/`CheckRun`/`LinkedPR`/
+  `Diagnosis`/`ReviewResult`, passed to both `MemorySaver`
+  (`graph/build.py`) and `AsyncPostgresSaver` (`app/main.py`). Closes the
+  "Known issue" below and roadmap item 3 in `README.md` — resuming a
+  paused run no longer logs a deprecation warning, and won't break once a
+  future LangGraph version enforces `LANGGRAPH_STRICT_MSGPACK`.
+
+### Changed
+- **`app/main.py`'s checkpointer swapped from `SqliteSaver` to
+  `AsyncPostgresSaver`.** Root cause: Render's free-tier web services have
+  an ephemeral filesystem (no persistent disk without a paid add-on) —
+  every spin-down/spin-up cycle after idle gets a fresh container, wiping
+  local `checkpoints.db` along with it. Any run paused at `await_approval`
+  during that window would silently lose its pending approval on resume:
+  the checkpointer would have no history for that `thread_id`. A real
+  Postgres instance isn't on the app host's disk at all, so it survives
+  container recycling. `AsyncPostgresSaver` has no sync API, so this made
+  the whole file async: `async def` endpoints, `await saver.setup()`,
+  `.ainvoke()` instead of `.invoke()`. Graph node functions themselves
+  stay synchronous — LangGraph runs sync nodes in a thread pool
+  automatically under `ainvoke()`, so nothing in `graph/nodes/*.py`
+  needed to change. Requires a real `DATABASE_URL` now (Neon/Supabase/
+  Render Postgres all work) — not yet verified against a live Postgres
+  instance end-to-end, only that the module imports and the FastAPI app
+  builds correctly; do that verification before relying on it in
+  production.
+
 ### Removed
 - `ui.py` (Streamlit) and the `streamlit` dependency. Now that the React
   frontend + FastAPI backend are deployed and verified end-to-end (see
