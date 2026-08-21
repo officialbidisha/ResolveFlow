@@ -172,9 +172,18 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
             },
         )
         token_resp.raise_for_status()
-        access_token = token_resp.json().get("access_token")
+        token_json = token_resp.json()
+        access_token = token_json.get("access_token")
         if not access_token:
-            raise HTTPException(status_code=400, detail="GitHub did not return an access token")
+            # Surface GitHub's actual error (e.g. "bad_verification_code",
+            # "incorrect_client_credentials") instead of a generic message --
+            # that's the only way to tell a wrong client secret apart from a
+            # stale/already-used code from the client-facing error alone.
+            raise HTTPException(
+                status_code=400,
+                detail=f"GitHub token exchange failed: {token_json.get('error', 'unknown')} "
+                f"— {token_json.get('error_description', 'no description')}",
+            )
 
         user_resp = await client.get(
             "https://api.github.com/user",
