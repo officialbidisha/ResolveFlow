@@ -87,8 +87,8 @@ independent guarantee on top of the graph routing.
 | `generate_diagnosis` | ✅ Real OpenAI call, structured `Diagnosis` output with citations, grounded via real Pinecone retrieval |
 | `independent_review` | ✅ Separate OpenAI critique call; approve/escalate gate computed in code, not trusted from the LLM |
 | Retrieval corpus | ✅ `ingest.py` builds a real Pinecone index (`resolveflow-issues`, ~2,750 chunks) from closed issues across 4 real repos (`facebook/react`, `langchain-ai/langchain`, `microsoft/terminal`, `vercel/next.js`; `text-embedding-3-small`), self-healing (creates the index if missing), idempotent (clears stale vectors before re-ingesting). `tools/retrieval.py` queries it directly. Verified against real issues end-to-end: correct, specific, citation-grounded root-cause diagnoses on real bugs — see `CHANGELOG.md` for `facebook/react#36932`. |
-| `execute` + human approval gate | ✅ `await_approval` builds the proposed comment/label and pauses via `interrupt()`; every path to `execute` goes through it. `execute` posts that exact payload via `tools/github_client.py`, gated on `state["approved"]`. Graph compiled with a checkpointer (`MemorySaver`); `ui.py` drives the real approve/reject flow with `Command(resume=...)`. Verified end-to-end (mocked GitHub reads/writes, real OpenAI + Pinecone calls): interrupt payload and posted content match exactly. |
-| React frontend + FastAPI backend | ✅ `frontend/` (Vite + React + TypeScript) talks to `app/main.py` (FastAPI) over HTTP. Backend uses a persistent `SqliteSaver` checkpointer instead of `ui.py`'s in-process `MemorySaver`, since interrupt()/resume happen across separate HTTP requests. Deployed: frontend on Vercel, backend on Render. Verified end-to-end on the live production URLs. |
+| `execute` + human approval gate | ✅ `await_approval` builds the proposed comment/label and pauses via `interrupt()`; every path to `execute` goes through it. `execute` posts that exact payload via `tools/github_client.py`, gated on `state["approved"]`. The deployed FastAPI backend drives the real approve/reject flow via `Command(resume=...)`, checkpointed with `SqliteSaver`. Verified end-to-end (mocked GitHub reads/writes, real OpenAI + Pinecone calls): interrupt payload and posted content match exactly. |
+| React frontend + FastAPI backend | ✅ `frontend/` (Vite + React + TypeScript) talks to `app/main.py` (FastAPI) over HTTP — the only deployed surface. Backend uses a persistent `SqliteSaver` checkpointer since interrupt()/resume happen across separate HTTP requests. Deployed: frontend on Vercel, backend on Render. Verified end-to-end on the live production URLs. |
 | `eval/` | ❌ Empty — no evaluation harness yet. |
 | Tests | ❌ Not written yet. |
 
@@ -106,12 +106,13 @@ cp .env.example .env     # fill in GITHUB_TOKEN, OPENAI_API_KEY, PINECONE_API_KE
 ## Running
 
 ```bash
-uv run streamlit run ui.py                              # Streamlit UI, drives compiled_graph directly
 uv run uvicorn app.main:app --reload                     # FastAPI backend, for the React frontend
 cd frontend && npm install && npm run dev                # React frontend (localhost:5173)
 uv run python ingest.py                                  # (re)populate the Pinecone index from live GitHub issues
 uv run pytest                                             # once tests exist
 ```
+
+Live: see the badges/links above. No local UI is needed to try it — the deployed frontend talks to the deployed backend directly.
 
 ## Roadmap
 

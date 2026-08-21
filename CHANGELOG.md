@@ -3,6 +3,24 @@
 All notable changes to ResolveFlow are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Removed
+- `ui.py` (Streamlit) and the `streamlit` dependency. Now that the React
+  frontend + FastAPI backend are deployed and verified end-to-end (see
+  [0.7.0] below), the Streamlit UI was a redundant, unmaintained second
+  surface — it drove `compiled_graph` directly with `MemorySaver`, which
+  can't survive across separate HTTP requests the way the deployed app
+  needs to, so it was never going to be the production path. `graph/build.py`
+  still exports `compiled_graph` (`MemorySaver`) as a local/ad-hoc
+  convenience — e.g. for a REPL or future tests — just not as an app
+  entry point anymore.
+- `faiss-cpu`, `scikit-learn`, `langchain-community` from `pyproject.toml`
+  — leftover from the pre-Pinecone TF-IDF/FAISS retrieval stack (see
+  [0.5.0]); confirmed zero imports before removing. `uv sync` dropped 10
+  packages total once transitive deps (`scipy`, `sqlalchemy`, `joblib`,
+  etc.) were included.
+
 ## [0.7.0] — React frontend, deployed
 
 ### Added

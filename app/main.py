@@ -1,12 +1,14 @@
 """FastAPI layer in front of the compiled graph, for the React frontend.
 
-ui.py (Streamlit) calls compiled_graph in-process and uses MemorySaver,
-which only lives as long as that one process. This API is a separate
-process serving separate HTTP requests — "analyze" and "resume" can
-easily land on different requests seconds apart — so interrupt()/resume
-needs a checkpointer that survives between them. SqliteSaver, opened
-once at startup and kept open for the app's lifetime, does that; the
-sqlite file lives on the backend host's disk, not in Python memory.
+This is the only deployed surface (frontend on Vercel, this API on
+Render) — there is no in-process UI anymore. "analyze" and "resume" can
+easily land on separate HTTP requests seconds apart, possibly on
+different worker threads, so interrupt()/resume needs a checkpointer
+that survives between them, not one scoped to a single Python process's
+memory (that's what graph/build.py's MemorySaver-backed `compiled_graph`
+is for — local/ad-hoc use only). SqliteSaver, opened once at startup and
+kept open for the app's lifetime, does that; the sqlite file lives on
+the backend host's disk.
 
 Deliberately not async: the graph's nodes (GitHub/OpenAI/Pinecone calls)
 are synchronous, and FastAPI runs sync `def` endpoints in a threadpool

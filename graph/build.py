@@ -32,10 +32,14 @@ Requires a checkpointer because interrupt() needs somewhere to persist
 state across the pause — callers must invoke with a thread_id in config,
 and resume with Command(resume=...) using that same thread_id.
 
-`compiled_graph` below (MemorySaver, in-process only) is what ui.py
-uses. `graph` (uncompiled) is exported too, so a caller needing a
-persistent checkpointer across process restarts — app/main.py's FastAPI
-backend, via SqliteSaver — can compile it themselves instead.
+`compiled_graph` below (MemorySaver, in-process only) is a convenience
+export for local/ad-hoc use (a REPL, a quick script, tests) — nothing
+resume-worthy across separate requests should rely on it. `graph`
+(uncompiled) is exported too, so a caller needing a persistent
+checkpointer across process restarts — app/main.py's FastAPI backend,
+via SqliteSaver — can compile it themselves instead. The deployed app
+(frontend on Vercel, backend on Render) is the only live surface; there
+is no in-process UI anymore.
 """
 
 from dotenv import load_dotenv
