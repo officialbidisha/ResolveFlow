@@ -28,13 +28,22 @@ vector_store = PineconeVectorStore(index= index, embedding= embeddings)
 
 
 def retrieve_evidence(query: str, k: int = 3) -> list[dict]:
-    results = vector_store.similarity_search(query, k)
+    """`score` is cosine similarity (this index's metric) in roughly [0, 1]
+    for real text embeddings. Empirically: a query closely matching real
+    corpus content scored ~0.53-0.63; a query unrelated to anything in any
+    of the 4 ingested repos scored ~0.21-0.22 — see independent_review.py's
+    MIN_RELEVANCE_SCORE, which sits between those two clusters. Callers
+    that don't need the score (nothing did, until independent_review.py's
+    groundedness check started using it) can just ignore the key.
+    """
+    results = vector_store.similarity_search_with_score(query, k)
 
     return [
         {
             "id": doc.metadata["id"],
             "text": doc.page_content,
             "source": doc.metadata["source"],
+            "score": score,
         }
-        for doc in results
+        for doc, score in results
     ]

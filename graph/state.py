@@ -30,3 +30,4 @@ class GraphState(TypedDict, total=False):
     execution_result: dict
     raw_evidence: dict
     retrieved_ids: list[str]
+    retrieved_scores: dict[str, float]  # id -> cosine similarity, for independent_review's groundedness check

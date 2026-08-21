@@ -6,6 +6,37 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Relevance-gated groundedness + scheduled re-ingestion for the RAG
+  layer.** Root cause: diagnoses on issues with no genuinely similar
+  corpus entry were reading as generic — `independent_review`'s
+  `groundedness_ok` only checked that a cited id was *a real retrieved
+  id*, not that the retrieval was actually any good, so a weakly-related
+  snippet (the closest of a bad lot) passed the gate just as easily as a
+  strong match. `tools/retrieval.py`'s `retrieve_evidence` now returns
+  each snippet's cosine similarity `score`; empirically, a query closely
+  matching real corpus content scored ~0.53-0.63, an unrelated query
+  scored ~0.21-0.22 (measured directly against the live index, not
+  guessed). `independent_review.py` adds `MIN_RELEVANCE_SCORE = 0.35`
+  (between those two clusters, biased toward the escalate side since a
+  false "escalate" is far cheaper than a false "approve") — a citation
+  now has to clear that bar, not just exist, to count as grounded.
+  `generate_diagnosis.py`'s prompt also surfaces each snippet's score to
+  the model directly, so it can decline to cite a weak match itself
+  rather than relying solely on the downstream gate. Verified: a
+  topically-close sparse issue grounds correctly (scores ~0.55-0.66); an
+  unrelated one gets zero citations from the model and, even if it had
+  cited something, would fail the score gate (~0.24-0.26) — both
+  correctly escalate to human where relevant. `eval/tasks.py` gained a
+  `weakly_related_citation_escalates` regression case for exactly this
+  failure mode, and existing review tasks got real `retrieved_scores`
+  fixtures instead of relying on the gate's old, weaker check.
+  Also: `.github/workflows/reingest.yml` runs `ingest.py` weekly
+  (`workflow_dispatch` too, for a manual run) so the index doesn't need a
+  human to remember to refresh it — needs `OPENAI_API_KEY`/
+  `PINECONE_API_KEY` added as GitHub Actions repo secrets (not something
+  this assistant can do on your behalf); `GITHUB_TOKEN` uses the one
+  Actions provides automatically.
+
 - **`eval/` — a safety-gate regression suite.** Scope, deliberately:
   `classify()`'s routing precedence, `independent_review()`'s
   groundedness/risk gate, and `execute()`'s permission check +

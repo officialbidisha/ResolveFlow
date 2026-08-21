@@ -1,0 +1,27 @@
+name: Re-ingest RAG corpus
+
+# Keeps the Pinecone index (resolveflow-issues) from going stale without
+# manual intervention — ingest.py is idempotent (full-replaces the index
+# each run), so a scheduled re-run just refreshes it with newly-closed
+# issues from the same 4 repos. Requires OPENAI_API_KEY and
+# PINECONE_API_KEY as repository secrets (Settings -> Secrets and
+# variables -> Actions); GITHUB_TOKEN is the one GitHub Actions provides
+# automatically, sufficient for the read-only calls list_closed_issues
+# makes against public repos.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  workflow_dispatch: {} # allow a manual run from the Actions tab
+
+jobs:
+  reingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync
+      - run: uv run python ingest.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}

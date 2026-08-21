@@ -38,6 +38,7 @@ from eval.tasks import CLASSIFY_TASKS, REVIEW_TASKS
 from graph.nodes.classify import classify
 from graph.nodes.execute import execute
 from graph.nodes.independent_review import independent_review
+from graph.state import GraphState
 from schemas.evidence import IssueEvidence
 
 
@@ -60,10 +61,11 @@ def run_classify_tasks() -> list[dict]:
 def run_review_tasks() -> list[dict]:
     results = []
     for task in REVIEW_TASKS:
-        state = {
+        state: GraphState = {
             "evidence": task.evidence,
             "diagnosis": task.diagnosis,
             "retrieved_ids": task.retrieved_ids,
+            "retrieved_scores": task.retrieved_scores,
         }
         review = independent_review(state)["review_result"]
         expected = {
@@ -116,7 +118,7 @@ def run_execute_tasks() -> list[dict]:
     ):
         mock_post.return_value = {"id": 1}
         mock_label.return_value = {"ok": True}
-        state = {
+        state: GraphState = {
             "approved": True,
             "evidence": evidence,
             "proposed_action": {"comment": "exact proposed text", "label": "needs-triage"},

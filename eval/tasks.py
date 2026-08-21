@@ -76,6 +76,7 @@ class ReviewTask:
     evidence: IssueEvidence
     diagnosis: Diagnosis
     retrieved_ids: list[str]
+    retrieved_scores: dict[str, float]
     expected_groundedness_ok: bool
     expected_risk_ok: bool
     expected_outcome: str
@@ -94,6 +95,7 @@ REVIEW_TASKS = [
             citations=["doc-1"],
         ),
         retrieved_ids=["doc-1", "doc-2"],
+        retrieved_scores={"doc-1": 0.6, "doc-2": 0.5},
         expected_groundedness_ok=True,
         expected_risk_ok=True,
         expected_outcome="approve",
@@ -110,6 +112,7 @@ REVIEW_TASKS = [
             citations=["doc-99"],
         ),
         retrieved_ids=["doc-1", "doc-2"],
+        retrieved_scores={"doc-1": 0.6, "doc-2": 0.5},
         expected_groundedness_ok=False,
         expected_risk_ok=True,
         expected_outcome="escalate_to_human",
@@ -125,6 +128,7 @@ REVIEW_TASKS = [
             citations=["doc-1"],
         ),
         retrieved_ids=["doc-1"],
+        retrieved_scores={"doc-1": 0.6},
         expected_groundedness_ok=True,
         expected_risk_ok=False,
         expected_outcome="escalate_to_human",
@@ -142,6 +146,29 @@ REVIEW_TASKS = [
             citations=[],
         ),
         retrieved_ids=["doc-1"],
+        retrieved_scores={"doc-1": 0.6},
+        expected_groundedness_ok=False,
+        expected_risk_ok=True,
+        expected_outcome="escalate_to_human",
+    ),
+    ReviewTask(
+        name="weakly_related_citation_escalates",
+        # New failure mode this MIN_RELEVANCE_SCORE gate exists to catch:
+        # the citation is a real, retrieved id (not hallucinated), but its
+        # similarity score is below the corpus-calibrated threshold (see
+        # independent_review.py) -- e.g. the only "match" for a genuinely
+        # novel issue was something only vaguely related. Before this gate
+        # existed, id-membership alone would have wrongly marked this
+        # grounded just because the id happened to be real.
+        evidence=_REVIEW_EVIDENCE,
+        diagnosis=Diagnosis(
+            root_cause="N+1 query in the dashboard endpoint",
+            severity="low",
+            recommended_next_steps=["Add eager loading for the related table"],
+            citations=["doc-1"],
+        ),
+        retrieved_ids=["doc-1"],
+        retrieved_scores={"doc-1": 0.22},
         expected_groundedness_ok=False,
         expected_risk_ok=True,
         expected_outcome="escalate_to_human",

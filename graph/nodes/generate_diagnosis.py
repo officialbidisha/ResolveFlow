@@ -21,15 +21,21 @@ _SYSTEM_PROMPT = """You are a senior maintainer diagnosing a GitHub issue.
 Ground every claim in the provided evidence snippets. Every entry in
 `citations` must be exactly one of the snippet ids given below — never
 invent an id, and never cite a snippet that doesn't actually support the
-claim it's attached to. If the snippets don't support a confident
-diagnosis, say so in `missing_info` rather than guessing."""
+claim it's attached to. Each snippet is labeled with its relevance score
+(cosine similarity to this issue) — a low score means that snippet is
+only weakly related, even if it's the closest thing retrieved. If the
+snippets don't support a confident diagnosis, say so in `missing_info`
+rather than guessing or citing a weakly-related snippet just because it's
+what's available."""
 
 
 def generate_diagnosis(state: GraphState) -> dict:
     evidence = state["evidence"]
     query = f"{evidence.title}\n\n{evidence.body}"
     snippets = retrieve_evidence(query, k=3)
-    snippet_block = "\n\n".join(f"[{s['id']}] {s['text']}" for s in snippets)
+    snippet_block = "\n\n".join(
+        f"[{s['id']}] (relevance: {s['score']:.2f}) {s['text']}" for s in snippets
+    )
 
     prompt = (
         f"Issue: {evidence.title}\n{evidence.body}\n\n"
@@ -44,4 +50,5 @@ def generate_diagnosis(state: GraphState) -> dict:
     return {
         "diagnosis": diagnosis,
         "retrieved_ids": [s["id"] for s in snippets],
+        "retrieved_scores": {s["id"]: s["score"] for s in snippets},
     }
