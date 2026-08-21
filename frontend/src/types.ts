@@ -42,6 +42,10 @@ export interface PendingApproval {
 export interface ExecutionResult {
   comment?: { id: number } | Record<string, unknown>;
   label?: { ok: boolean } | Record<string, unknown>;
+  // Set instead of `label` when the comment posted but adding the label
+  // failed (e.g. 403 — commenting is open to any authenticated user on a
+  // public repo, but labeling needs triage/write access on that repo).
+  label_error?: string;
 }
 
 export interface GraphResult {

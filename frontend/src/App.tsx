@@ -300,6 +300,14 @@ export default function App() {
         </div>
       )}
 
+      {result?.execution_result?.label_error && (
+        <div className="banner banner-info">
+          Comment posted, but couldn't add the label — you likely don't have
+          triage/write access on this repo. Commenting is open to any signed-in
+          user; labeling isn't.
+        </div>
+      )}
+
       {result?.rejected && (
         <div className="banner banner-info">Rejected — nothing was posted to GitHub.</div>
       )}

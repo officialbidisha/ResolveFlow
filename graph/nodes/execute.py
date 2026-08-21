@@ -11,6 +11,8 @@ see tools/github_client.py.
 
 from __future__ import annotations
 
+import requests
+
 from graph.state import GraphState
 from tools.github_client import add_label, post_comment
 
@@ -27,6 +29,14 @@ def execute(state: GraphState) -> dict:
         "comment": post_comment(evidence.repo, evidence.issue_number, action["comment"], token=token)
     }
     if action.get("label"):
-        result["label"] = add_label(evidence.repo, evidence.issue_number, action["label"], token=token)
+        try:
+            result["label"] = add_label(evidence.repo, evidence.issue_number, action["label"], token=token)
+        except requests.HTTPError as exc:
+            # Commenting is open to any authenticated user on a public repo,
+            # but adding a label needs triage/write access -- a visitor
+            # analyzing someone else's repo under their own OAuth token
+            # legitimately won't have that. The comment above already
+            # posted for real; don't let this raise and lose that result.
+            result["label_error"] = str(exc)
 
     return {"execution_result": result}
