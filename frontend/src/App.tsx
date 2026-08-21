@@ -32,6 +32,78 @@ function CheckPill({ label, ok }: { label: string; ok: boolean }) {
   );
 }
 
+type StepStatus = "pending" | "active" | "done" | "skipped";
+
+const PIPELINE_STEPS: { key: string; label: string }[] = [
+  { key: "fetch", label: "Fetch" },
+  { key: "classify", label: "Classify" },
+  { key: "diagnose", label: "Diagnose" },
+  { key: "review", label: "Review" },
+  { key: "approve", label: "Approve" },
+  { key: "execute", label: "Execute" },
+];
+
+// Mirrors the actual graph, not a decorative progress bar: fetch_evidence ->
+// classify -> generate_diagnosis -> independent_review -> await_approval ->
+// execute. deterministic/human_review classifications skip the LLM
+// diagnose/review steps entirely, and a reject skips execute -- both shown
+// as "skipped", not stuck "pending" forever.
+function pipelineStatuses(result: GraphResult | null, phase: Phase): StepStatus[] {
+  if (!result) {
+    return PIPELINE_STEPS.map((_, i) => (i === 0 && phase === "analyzing" ? "active" : "pending"));
+  }
+
+  const fetch: StepStatus = "done";
+  const classify: StepStatus = result.classification ? "done" : "active";
+  const isLlmPath = result.classification === "ai_investigation";
+
+  const diagnose: StepStatus = !isLlmPath
+    ? classify === "done"
+      ? "skipped"
+      : "pending"
+    : result.diagnosis
+      ? "done"
+      : "active";
+
+  const review: StepStatus = !isLlmPath ? "skipped" : result.review_result ? "done" : diagnose === "done" ? "active" : "pending";
+
+  const reachedGate = !!result.pending_approval || result.rejected || !!result.execution_result;
+  const approve: StepStatus = result.pending_approval
+    ? "active"
+    : reachedGate
+      ? "done"
+      : review === "done" || review === "skipped"
+        ? review === "skipped" && result.classification !== "deterministic"
+          ? "skipped" // escalate_to_human / human_review never reach a gate at all
+          : "pending"
+        : "pending";
+
+  const execute: StepStatus = result.execution_result
+    ? "done"
+    : result.rejected
+      ? "skipped"
+      : phase === "resuming"
+        ? "active"
+        : "pending";
+
+  return [fetch, classify, diagnose, review, approve, execute];
+}
+
+function Pipeline({ result, phase }: { result: GraphResult | null; phase: Phase }) {
+  const statuses = pipelineStatuses(result, phase);
+  return (
+    <div className="pipeline" aria-label="Pipeline progress">
+      {PIPELINE_STEPS.map((step, i) => (
+        <div className={`pipeline-step pipeline-${statuses[i]}`} key={step.key}>
+          <span className="pipeline-dot" />
+          <span className="pipeline-label">{step.label}</span>
+          {i < PIPELINE_STEPS.length - 1 && <span className="pipeline-line" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [issueUrl, setIssueUrl] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -115,6 +187,7 @@ export default function App() {
           Diagnoses a GitHub issue and proposes a fix — but never writes back to GitHub
           without passing an independent LLM review <em>and</em> your explicit approval.
         </p>
+        <Pipeline result={result} phase={phase} />
       </header>
 
       {!userLoading && !user && (

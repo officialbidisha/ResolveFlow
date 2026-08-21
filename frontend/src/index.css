@@ -182,6 +182,109 @@ body {
   color: var(--text);
 }
 
+/* ---------- pipeline stepper ---------- */
+
+.pipeline {
+  display: flex;
+  align-items: center;
+  padding: 4px 2px 0;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.pipeline-step:last-child {
+  flex: 0 0 auto;
+}
+
+.pipeline-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.pipeline-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+  margin-left: 7px;
+  white-space: nowrap;
+  transition: color 0.3s ease;
+}
+
+.pipeline-line {
+  flex: 1;
+  height: 1.5px;
+  background: var(--border);
+  margin: 0 10px;
+  transition: background 0.3s ease;
+}
+
+.pipeline-done .pipeline-dot {
+  background: var(--write);
+  border-color: var(--write);
+}
+
+.pipeline-done .pipeline-label {
+  color: var(--text-dim);
+}
+
+.pipeline-done .pipeline-line {
+  background: var(--write);
+  opacity: 0.5;
+}
+
+.pipeline-active .pipeline-dot {
+  background: var(--reason);
+  border-color: var(--reason);
+  box-shadow: 0 0 0 4px rgba(127, 163, 234, 0.18);
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+.pipeline-active .pipeline-label {
+  color: var(--reason);
+  font-weight: 500;
+}
+
+.pipeline-skipped .pipeline-dot {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.5;
+}
+
+.pipeline-skipped .pipeline-label {
+  color: var(--text-faint);
+  opacity: 0.5;
+}
+
+@keyframes pulseDot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px rgba(127, 163, 234, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(127, 163, 234, 0.08);
+  }
+}
+
+@media (max-width: 560px) {
+  .pipeline-label {
+    display: none;
+  }
+
+  .pipeline-line {
+    margin: 0 4px;
+  }
+}
+
 /* ---------- input ---------- */
 
 .analyze-form {
