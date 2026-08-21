@@ -53,38 +53,48 @@ function pipelineStatuses(result: GraphResult | null, phase: Phase): StepStatus[
     return PIPELINE_STEPS.map((_, i) => (i === 0 && phase === "analyzing" ? "active" : "pending"));
   }
 
+  const classification = result.classification;
+  const isLlmPath = classification === "ai_investigation";
+  // Both of these are genuinely terminal -- the run is finished and will
+  // never reach an approval gate, not just "hasn't gotten there yet".
+  const terminalNoGate = classification === "human_review" || result.review_result?.outcome === "escalate_to_human";
+
   const fetch: StepStatus = "done";
-  const classify: StepStatus = result.classification ? "done" : "active";
-  const isLlmPath = result.classification === "ai_investigation";
+  const classify: StepStatus = classification ? "done" : "active";
 
-  const diagnose: StepStatus = !isLlmPath
-    ? classify === "done"
+  const diagnose: StepStatus = !classification
+    ? "pending"
+    : !isLlmPath
       ? "skipped"
-      : "pending"
-    : result.diagnosis
+      : result.diagnosis
+        ? "done"
+        : "active";
+
+  const review: StepStatus = !isLlmPath
+    ? "skipped"
+    : result.review_result
       ? "done"
-      : "active";
-
-  const review: StepStatus = !isLlmPath ? "skipped" : result.review_result ? "done" : diagnose === "done" ? "active" : "pending";
-
-  const reachedGate = !!result.pending_approval || result.rejected || !!result.execution_result;
-  const approve: StepStatus = result.pending_approval
-    ? "active"
-    : reachedGate
-      ? "done"
-      : review === "done" || review === "skipped"
-        ? review === "skipped" && result.classification !== "deterministic"
-          ? "skipped" // escalate_to_human / human_review never reach a gate at all
-          : "pending"
-        : "pending";
-
-  const execute: StepStatus = result.execution_result
-    ? "done"
-    : result.rejected
-      ? "skipped"
-      : phase === "resuming"
+      : diagnose === "done"
         ? "active"
         : "pending";
+
+  const approve: StepStatus = terminalNoGate
+    ? "skipped"
+    : result.pending_approval
+      ? "active"
+      : result.rejected || result.execution_result
+        ? "done"
+        : "pending";
+
+  const execute: StepStatus = terminalNoGate
+    ? "skipped"
+    : result.execution_result
+      ? "done"
+      : result.rejected
+        ? "skipped"
+        : phase === "resuming"
+          ? "active"
+          : "pending";
 
   return [fetch, classify, diagnose, review, approve, execute];
 }
