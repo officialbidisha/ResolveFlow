@@ -89,6 +89,7 @@ independent guarantee on top of the graph routing.
 | Retrieval corpus | ✅ `ingest.py` builds a real Pinecone index (`resolveflow-issues`, ~2,750 chunks) from closed issues across 4 real repos (`facebook/react`, `langchain-ai/langchain`, `microsoft/terminal`, `vercel/next.js`; `text-embedding-3-small`), self-healing (creates the index if missing), idempotent (clears stale vectors before re-ingesting). `tools/retrieval.py` queries it directly. Verified against real issues end-to-end: correct, specific, citation-grounded root-cause diagnoses on real bugs — see `CHANGELOG.md` for `facebook/react#36932`. |
 | `execute` + human approval gate | ✅ `await_approval` builds the proposed comment/label and pauses via `interrupt()`; every path to `execute` goes through it. `execute` posts that exact payload via `tools/github_client.py`, gated on `state["approved"]`. The deployed FastAPI backend drives the real approve/reject flow via `Command(resume=...)`, checkpointed with `AsyncPostgresSaver`. Verified end-to-end (mocked GitHub reads/writes, real OpenAI + Pinecone calls): interrupt payload and posted content match exactly. See [`docs/CHECKPOINTING.md`](./docs/CHECKPOINTING.md) for the resume mechanism in detail, with a sequence diagram. |
 | React frontend + FastAPI backend | ✅ `frontend/` (Vite + React + TypeScript) talks to `app/main.py` (FastAPI) over HTTP — the only deployed surface. Backend is fully async and uses `AsyncPostgresSaver` (a real Postgres instance) as its checkpointer — not local SQLite, which Render's free-tier ephemeral disk wipes on every spin-down/spin-up, silently losing any paused approval. Deployed: frontend on Vercel, backend on Render. Verified end-to-end on the live production URLs. |
+| GitHub OAuth ("Sign in with GitHub") | ✅ Any visitor can sign in with their own GitHub account; reads/writes then run as *them*, not the deployment owner's shared `GITHUB_TOKEN`. `app/db.py` adds a `sessions` table (opaque cookie -> real token, kept server-side), a `thread_owners` table (a paused run can only be resumed by the session that started it), and a per-user `analyze_calls` daily cap — all in the same Postgres as the checkpointer, on a separate connection pool. The owner's `OPENAI_API_KEY`/`PINECONE_API_KEY` still fund every diagnosis regardless of who's asking, which is exactly what the daily cap bounds. |
 | `eval/` | ❌ Empty — no evaluation harness yet. |
 | Tests | ❌ Not written yet. |
 
@@ -102,6 +103,14 @@ compressed from into a solo, thinner end-to-end slice.
 uv sync                  # installs from pyproject.toml
 cp .env.example .env     # fill in GITHUB_TOKEN, OPENAI_API_KEY, PINECONE_API_KEY, DATABASE_URL
 ```
+
+To let visitors sign in with their own GitHub account (rather than every
+request running under `GITHUB_TOKEN`), create a GitHub OAuth App at
+[github.com/settings/developers](https://github.com/settings/developers)
+with its callback URL set to `<your backend>/api/auth/github/callback`,
+then fill in `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` /
+`FRONTEND_URL` in `.env` (see `.env.example` for details, including the
+HTTPS-only caveat on the session cookie).
 
 ## Running
 

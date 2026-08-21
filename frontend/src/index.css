@@ -69,6 +69,49 @@ body {
   color: var(--text-faint);
 }
 
+.auth-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.auth-link {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+}
+
+.auth-link:hover {
+  color: var(--reason);
+  text-decoration-color: var(--reason);
+}
+
+.auth-signin {
+  color: var(--reason);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-signin:hover {
+  filter: brightness(1.15);
+}
+
 .header h1 {
   font-family: var(--mono);
   font-size: clamp(28px, 6vw, 36px);

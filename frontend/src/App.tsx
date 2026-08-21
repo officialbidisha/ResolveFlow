@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { analyze, resume } from "./api";
+import { useEffect, useState } from "react";
+import { GITHUB_LOGIN_URL, analyze, getCurrentUser, logout, resume } from "./api";
+import type { CurrentUser } from "./api";
 import type { GraphResult } from "./types";
 
 const EXAMPLE_URLS = [
@@ -36,11 +37,29 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GraphResult | null>(null);
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
 
   const busy = phase !== "idle";
 
+  useEffect(() => {
+    getCurrentUser()
+      .then(setUser)
+      .finally(() => setUserLoading(false));
+  }, []);
+
+  async function handleLogout() {
+    await logout();
+    setUser(null);
+    setResult(null);
+  }
+
   async function handleAnalyze(e: React.FormEvent) {
     e.preventDefault();
+    if (!user) {
+      setError("Sign in with GitHub first.");
+      return;
+    }
     if (!issueUrl.trim()) {
       setError("Paste an issue URL first.");
       return;
@@ -75,7 +94,22 @@ export default function App() {
   return (
     <div className="page">
       <header className="header">
-        <div className="eyebrow">LangGraph &middot; approval-gated execution</div>
+        <div className="auth-bar">
+          <div className="eyebrow">LangGraph &middot; approval-gated execution</div>
+          {!userLoading &&
+            (user ? (
+              <div className="auth-status">
+                <span className="mono">{user.login}</span>
+                <button type="button" className="auth-link" onClick={handleLogout}>
+                  Log out
+                </button>
+              </div>
+            ) : (
+              <a className="auth-link auth-signin" href={GITHUB_LOGIN_URL}>
+                Sign in with GitHub
+              </a>
+            ))}
+        </div>
         <h1>ResolveFlow</h1>
         <p className="thesis">
           Diagnoses a GitHub issue and proposes a fix — but never writes back to GitHub
@@ -83,16 +117,24 @@ export default function App() {
         </p>
       </header>
 
+      {!userLoading && !user && (
+        <div className="banner banner-info">
+          Sign in with your own GitHub account to analyze an issue — reads/writes run as
+          you, not the deployment owner. Limited to{" "}
+          <span className="mono">10 analyses/day</span> per account.
+        </div>
+      )}
+
       <form className="analyze-form" onSubmit={handleAnalyze}>
         <input
           type="text"
           value={issueUrl}
           onChange={(e) => setIssueUrl(e.target.value)}
           placeholder="https://github.com/owner/repo/issues/123"
-          disabled={busy}
+          disabled={busy || !user}
           aria-label="GitHub issue URL"
         />
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={busy || !user}>
           {phase === "analyzing" ? "Analyzing…" : "Analyze"}
         </button>
       </form>
@@ -105,7 +147,7 @@ export default function App() {
               type="button"
               className="example-link"
               onClick={() => setIssueUrl(url)}
-              disabled={busy}
+              disabled={busy || !user}
             >
               {url.replace("https://github.com/", "")}
             </button>

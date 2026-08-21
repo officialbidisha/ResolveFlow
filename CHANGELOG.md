@@ -5,6 +5,34 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **GitHub OAuth ("Sign in with GitHub") so any visitor can use the live
+  app under their own identity.** Root cause: every request previously ran
+  under one shared `GITHUB_TOKEN` (the deployment owner's), so a stranger
+  using the public site would read/write GitHub *as the owner* — wrong
+  attribution, and a single shared rate limit. `app/main.py` gained
+  `/api/auth/github/login` + `/callback` (Authorization Code flow via
+  `httpx`) + `/me` + `/logout`; `app/db.py` adds a `sessions` table (opaque
+  cookie -> real GitHub token, kept server-side, never sent to the
+  browser) in the same Postgres as the checkpointer, on its own
+  `psycopg_pool.AsyncConnectionPool` (the checkpointer's `AsyncPostgresSaver`
+  owns its own schema and connection, not reused for app tables).
+  `tools/github_client.py`'s functions all gained an optional `token`
+  param (falls back to `GITHUB_TOKEN` when unset, so `ingest.py` and local
+  scripts are unaffected); `graph/state.py` gained `github_token`, threaded
+  through by `fetch_evidence.py`/`execute.py` so the graph reads/writes as
+  the logged-in visitor.
+- **Two things this opened up that needed closing, not just the happy
+  path:** (1) the owner's `OPENAI_API_KEY`/`PINECONE_API_KEY` still fund
+  every `generate_diagnosis`/`independent_review` call regardless of who's
+  asking — added a per-GitHub-user daily cap (`analyze_calls` table,
+  `DAILY_ANALYZE_LIMIT = 10`, atomic `INSERT ... ON CONFLICT ... count + 1`)
+  so one visitor can't run up the owner's bill. (2) `/api/resume/{thread_id}`
+  previously accepted any `thread_id` from anyone — with multiple real
+  users that meant one visitor could approve/reject *another visitor's*
+  paused action. Added a `thread_owners` table recording who started each
+  run; `/api/resume` now 403s if the caller isn't that thread's owner.
+
 ### Fixed
 - **Registered the Pydantic state schemas with LangGraph's checkpoint
   serializer.** `graph/serde.py` builds a `JsonPlusSerializer` with

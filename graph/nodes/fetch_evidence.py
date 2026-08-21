@@ -27,13 +27,14 @@ def fetch_evidence(state: GraphState) -> dict:
     if not match:
         raise ValueError(f"could not parse issue URL: {state['issue_url']!r}")
     repo, issue_number = match.group(1), int(match.group(2))
+    token = state.get("github_token")
 
     raw_evidence = {
         "repo": repo,
         "issue_number": issue_number,
-        "issue": github_client.get_issue(repo, issue_number),
-        "comments": github_client.get_comments(repo, issue_number),
-        "codeowners": github_client.get_codeowners(repo),
+        "issue": github_client.get_issue(repo, issue_number, token=token),
+        "comments": github_client.get_comments(repo, issue_number, token=token),
+        "codeowners": github_client.get_codeowners(repo, token=token),
         "check_runs": [],
     }
 

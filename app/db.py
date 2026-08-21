@@ -1,0 +1,113 @@
+"""App-level Postgres state: GitHub OAuth sessions, per-thread ownership,
+and the daily per-user analyze cap. Separate from `graph/build.py`'s
+`AsyncPostgresSaver`, which owns its own tables (LangGraph's checkpoint
+schema) against the same DATABASE_URL — this module never touches those.
+
+A session row holds the visitor's real GitHub access token server-side;
+the browser only ever holds an opaque, random session_id in an httpOnly
+cookie. That's what keeps a stolen/leaked cookie from being directly
+usable outside this app's own session lookup, and keeps the token out of
+anything client-visible (network tab, JS, logs of the frontend).
+"""
+
+from __future__ import annotations
+
+import secrets
+from datetime import date
+
+from psycopg_pool import AsyncConnectionPool
+
+DAILY_ANALYZE_LIMIT = 10
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id      TEXT PRIMARY KEY,
+    github_user_id  BIGINT NOT NULL,
+    github_login    TEXT NOT NULL,
+    github_token    TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS thread_owners (
+    thread_id       TEXT PRIMARY KEY,
+    github_user_id  BIGINT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS analyze_calls (
+    github_user_id  BIGINT NOT NULL,
+    day             DATE NOT NULL,
+    count           INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (github_user_id, day)
+);
+"""
+
+
+class SessionUser:
+    def __init__(self, github_user_id: int, github_login: str, github_token: str):
+        self.github_user_id = github_user_id
+        self.github_login = github_login
+        self.github_token = github_token
+
+
+async def setup(pool: AsyncConnectionPool) -> None:
+    async with pool.connection() as conn:
+        await conn.execute(_SCHEMA)
+
+
+async def create_session(pool: AsyncConnectionPool, github_user_id: int, github_login: str, github_token: str) -> str:
+    session_id = secrets.token_urlsafe(32)
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO sessions (session_id, github_user_id, github_login, github_token) "
+            "VALUES (%s, %s, %s, %s)",
+            (session_id, github_user_id, github_login, github_token),
+        )
+    return session_id
+
+
+async def get_session_user(pool: AsyncConnectionPool, session_id: str) -> SessionUser | None:
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT github_user_id, github_login, github_token FROM sessions WHERE session_id = %s",
+            (session_id,),
+        )
+        row = await cur.fetchone()
+    return SessionUser(*row) if row else None
+
+
+async def delete_session(pool: AsyncConnectionPool, session_id: str) -> None:
+    async with pool.connection() as conn:
+        await conn.execute("DELETE FROM sessions WHERE session_id = %s", (session_id,))
+
+
+async def record_thread_owner(pool: AsyncConnectionPool, thread_id: str, github_user_id: int) -> None:
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO thread_owners (thread_id, github_user_id) VALUES (%s, %s)",
+            (thread_id, github_user_id),
+        )
+
+
+async def get_thread_owner(pool: AsyncConnectionPool, thread_id: str) -> int | None:
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT github_user_id FROM thread_owners WHERE thread_id = %s", (thread_id,)
+        )
+        row = await cur.fetchone()
+    return row[0] if row else None
+
+
+async def increment_and_check_daily_limit(pool: AsyncConnectionPool, github_user_id: int) -> bool:
+    """Atomically increments today's analyze count for this user and
+    returns whether they're still within DAILY_ANALYZE_LIMIT (True = ok).
+    """
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "INSERT INTO analyze_calls (github_user_id, day, count) VALUES (%s, %s, 1) "
+            "ON CONFLICT (github_user_id, day) DO UPDATE SET count = analyze_calls.count + 1 "
+            "RETURNING count",
+            (github_user_id, date.today()),
+        )
+        (count,) = await cur.fetchone()
+    return count <= DAILY_ANALYZE_LIMIT

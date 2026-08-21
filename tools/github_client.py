@@ -19,20 +19,22 @@ GITHUB_API = "https://api.github.com"
 TIMEOUT = 10
 
 
-def _headers() -> dict:
-    token = os.environ.get("GITHUB_TOKEN")
+def _headers(token: str | None = None) -> dict:
+    token = token or os.environ.get("GITHUB_TOKEN")
     if not token:
-        raise RuntimeError("GITHUB_TOKEN is not set")
+        raise RuntimeError("GITHUB_TOKEN is not set and no per-request token was given")
     return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
 
 
-def get_issue(repo: str, issue_number: int) -> dict:
-    resp = requests.get(f"{GITHUB_API}/repos/{repo}/issues/{issue_number}", headers=_headers(), timeout=TIMEOUT)
+def get_issue(repo: str, issue_number: int, token: str | None = None) -> dict:
+    resp = requests.get(
+        f"{GITHUB_API}/repos/{repo}/issues/{issue_number}", headers=_headers(token), timeout=TIMEOUT
+    )
     resp.raise_for_status()
     return resp.json()
 
 
-def list_closed_issues(repo: str, count: int = 40) -> list[dict]:
+def list_closed_issues(repo: str, count: int = 40, token: str | None = None) -> list[dict]:
     """Returns up to `count` closed issues, newest-updated first.
 
     The GitHub issues endpoint also returns pull requests (a PR is an issue
@@ -45,7 +47,7 @@ def list_closed_issues(repo: str, count: int = 40) -> list[dict]:
     while len(issues) < count:
         resp = requests.get(
             f"{GITHUB_API}/repos/{repo}/issues",
-            headers=_headers(),
+            headers=_headers(token),
             params={"state": "closed", "sort": "updated", "per_page": 100, "page": page},
             timeout=TIMEOUT,
         )
@@ -58,21 +60,21 @@ def list_closed_issues(repo: str, count: int = 40) -> list[dict]:
     return issues[:count]
 
 
-def get_comments(repo: str, issue_number: int) -> list[dict]:
+def get_comments(repo: str, issue_number: int, token: str | None = None) -> list[dict]:
     resp = requests.get(
-        f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/comments", headers=_headers(), timeout=TIMEOUT
+        f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/comments", headers=_headers(token), timeout=TIMEOUT
     )
     resp.raise_for_status()
     return resp.json()
 
 
-def get_check_runs(repo: str, ref: str) -> list[dict]:
+def get_check_runs(repo: str, ref: str, token: str | None = None) -> list[dict]:
     """`ref` is a commit SHA — callers must resolve it from a linked PR first.
     Returns [] if there's no PR yet, since an issue with no code changes has
     no CI to speak of.
     """
     resp = requests.get(
-        f"{GITHUB_API}/repos/{repo}/commits/{ref}/check-runs", headers=_headers(), timeout=TIMEOUT
+        f"{GITHUB_API}/repos/{repo}/commits/{ref}/check-runs", headers=_headers(token), timeout=TIMEOUT
     )
     resp.raise_for_status()
     return resp.json().get("check_runs", [])
@@ -80,11 +82,11 @@ def get_check_runs(repo: str, ref: str) -> list[dict]:
 
 
 
-def get_codeowners(repo: str) -> str | None:
+def get_codeowners(repo: str, token: str | None = None) -> str | None:
     for path in (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"):
         resp = requests.get(
             f"{GITHUB_API}/repos/{repo}/contents/{path}",
-            headers={**_headers(), "Accept": "application/vnd.github.raw"},
+            headers={**_headers(token), "Accept": "application/vnd.github.raw"},
             timeout=TIMEOUT,
         )
         if resp.status_code == 200:
@@ -92,10 +94,10 @@ def get_codeowners(repo: str) -> str | None:
     return None
 
 
-def post_comment(repo: str, issue_number: int, body: str) -> dict:
+def post_comment(repo: str, issue_number: int, body: str, token: str | None = None) -> dict:
     resp = requests.post(
         f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/comments",
-        headers=_headers(),
+        headers=_headers(token),
         json={"body": body},
         timeout=TIMEOUT,
     )
@@ -103,10 +105,10 @@ def post_comment(repo: str, issue_number: int, body: str) -> dict:
     return resp.json()
 
 
-def add_label(repo: str, issue_number: int, label: str) -> dict:
+def add_label(repo: str, issue_number: int, label: str, token: str | None = None) -> dict:
     resp = requests.post(
         f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/labels",
-        headers=_headers(),
+        headers=_headers(token),
         json={"labels": [label]},
         timeout=TIMEOUT,
     )

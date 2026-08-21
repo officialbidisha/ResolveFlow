@@ -20,6 +20,7 @@ Classification = Literal["deterministic", "ai_investigation", "human_review"]
 
 class GraphState(TypedDict, total=False):
     issue_url: str
+    github_token: str  # the logged-in visitor's own token; falls back to GITHUB_TOKEN if unset
     evidence: IssueEvidence
     classification: Classification
     diagnosis: Diagnosis
