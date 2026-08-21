@@ -29,14 +29,18 @@ and shouldn't be reused for unrelated app tables). LLM/embedding calls
 owner's own OPENAI_API_KEY/PINECONE_API_KEY regardless of who's asking —
 that's what the per-user daily analyze cap in app/db.py bounds.
 
-The session cookie is SameSite=None + Secure, since the frontend
-(Vercel) and this API (Render) are different origins and every
-post-login request is a cross-site `fetch(..., {credentials: "include"})`
-call, not a top-level navigation — SameSite=None is the only setting
-browsers send cross-site for that. Secure cookies require HTTPS, so
-the full login round trip only works over a real HTTPS deployment, not
-plain http://localhost — a known local-dev-only gap, consistent with
-this project's "not production-hardened" framing (see README).
+The session cookie is SameSite=Lax + Secure. It used to be SameSite=None,
+back when the browser talked to this API's *.onrender.com origin
+directly from the *.vercel.app frontend — but that made the cookie a
+cross-site ("third-party") cookie, which Chrome blocks outright
+regardless of SameSite/Secure. Fixed by having frontend/vercel.json proxy
+/api/* to this backend server-side, so the browser only ever talks to
+its own origin; the cookie is first-party from the browser's point of
+view even though this process is a different host underneath. Secure
+still requires HTTPS, so the login round trip only fully works over a
+real HTTPS deployment, not plain http://localhost — a known
+local-dev-only gap (no proxy locally either), consistent with this
+project's "not production-hardened" framing (see README).
 """
 
 from __future__ import annotations
@@ -197,7 +201,7 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
     redirect = RedirectResponse(FRONTEND_URL)
     redirect.delete_cookie(STATE_COOKIE)
     redirect.set_cookie(
-        SESSION_COOKIE, session_id, max_age=60 * 60 * 24 * 30, httponly=True, secure=True, samesite="none"
+        SESSION_COOKIE, session_id, max_age=60 * 60 * 24 * 30, httponly=True, secure=True, samesite="lax"
     )
     return redirect
 

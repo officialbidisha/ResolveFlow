@@ -1,8 +1,13 @@
 import type { GraphResult } from "./types";
 
-// Points at the FastAPI backend (app/main.py). Set VITE_API_URL at build
-// time for the deployed frontend; falls back to localhost for dev.
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// "" (same-origin, relative /api/... paths) in production — vercel.json
+// proxies /api/* to the Render backend server-side, so the browser only
+// ever talks to this same origin. That's not just tidiness: the session
+// cookie is otherwise a cross-site ("third-party") cookie between the
+// *.vercel.app and *.onrender.com domains, which Chrome blocks outright
+// regardless of SameSite/Secure settings — proxying makes it first-party.
+// Local dev has no such proxy, so it still talks to localhost:8000 directly.
+const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 // credentials: "include" on every call — the backend authenticates via the
 // httpOnly session_id cookie set by /api/auth/github/callback, not a header.
