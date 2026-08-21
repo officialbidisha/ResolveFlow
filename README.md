@@ -1,5 +1,8 @@
 # ResolveFlow
 
+<img width="1080" height="1080" alt="BrandBird 2026-08-21 23 54 43" src="https://github.com/user-attachments/assets/c5209dfd-b2a8-420d-8af0-6e8819d0792f" />
+
+
 **A LangGraph agent that diagnoses GitHub issues and proposes fixes — but
 never touches GitHub without passing an independent LLM review *and* an
 explicit human approval.**
