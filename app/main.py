@@ -81,7 +81,13 @@ _state: dict = {}
 async def lifespan(app: FastAPI):
     async with (
         AsyncPostgresSaver.from_conn_string(DATABASE_URL, serde=get_serde()) as saver,
-        AsyncConnectionPool(DATABASE_URL, open=False) as pool,
+        # check=check_connection pings a pooled connection before handing it
+        # out, transparently replacing it if it's dead — without this, a
+        # connection killed server-side while idle in the pool (e.g. a
+        # managed Postgres provider's autosuspend/idle-timeout sending
+        # AdminShutdown) gets handed to the next request and blows up with
+        # an unhandled psycopg.errors.AdminShutdown on first use.
+        AsyncConnectionPool(DATABASE_URL, open=False, check=AsyncConnectionPool.check_connection) as pool,
     ):
         await saver.setup()
         await pool.open()
@@ -175,7 +181,11 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
                 "code": code,
             },
         )
-        token_resp.raise_for_status()
+        if token_resp.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail=f"GitHub token exchange request failed: {token_resp.status_code} {token_resp.text}",
+            )
         token_json = token_resp.json()
         access_token = token_json.get("access_token")
         if not access_token:
@@ -193,7 +203,15 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
             "https://api.github.com/user",
             headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"},
         )
-        user_resp.raise_for_status()
+        if user_resp.status_code != 200:
+            # A transient GitHub API failure (rate limit, brief outage) here
+            # used to propagate as an unhandled httpx.HTTPStatusError, which
+            # FastAPI turns into a bare 500 mid-redirect — worse than this
+            # 502, which at least says which upstream call failed.
+            raise HTTPException(
+                status_code=502,
+                detail=f"GitHub user lookup failed: {user_resp.status_code} {user_resp.text}",
+            )
         gh_user = user_resp.json()
 
     session_id = await db.create_session(_state["pool"], gh_user["id"], gh_user["login"], access_token)
