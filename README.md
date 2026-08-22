@@ -7,9 +7,6 @@
 never touches GitHub without passing an independent LLM review *and* an
 explicit human approval.**
 
-<img width="612" alt="ResolveFlow's approval gate: the exact GitHub comment execute will post, awaiting human approval" src="docs/screenshot-approval-gate.jpg" />
-
-
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1c1c1c)
 ![status](https://img.shields.io/badge/status-approval--gated%20execution%20live-brightgreen)
