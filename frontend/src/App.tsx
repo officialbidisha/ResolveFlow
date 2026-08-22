@@ -187,7 +187,7 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <a className="auth-link auth-signin" href={GITHUB_LOGIN_URL}>
+              <a className="auth-signin" href={GITHUB_LOGIN_URL}>
                 Sign in with GitHub
               </a>
             ))}
