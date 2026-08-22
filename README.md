@@ -1,17 +1,25 @@
+<div align="center">
+
 # ResolveFlow
 
-<img width="1080" height="1080" alt="BrandBird 2026-08-21 23 54 43" src="https://github.com/user-attachments/assets/c5209dfd-b2a8-420d-8af0-6e8819d0792f" />
+<img width="720" alt="ResolveFlow" src="https://github.com/user-attachments/assets/c5209dfd-b2a8-420d-8af0-6e8819d0792f" />
 
+### A LangGraph agent that diagnoses GitHub issues and proposes fixes — but never touches GitHub without passing an independent LLM review *and* an explicit human approval.
 
-**A LangGraph agent that diagnoses GitHub issues and proposes fixes — but
-never touches GitHub without passing an independent LLM review *and* an
-explicit human approval.**
-
-![Python](https://img.shields.io/badge/python-3.12-blue)
-![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1c1c1c)
-![status](https://img.shields.io/badge/status-approval--gated%20execution%20live-brightgreen)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
+[![LangGraph](https://img.shields.io/badge/LangGraph-StateGraph-1C1C1C?style=flat-square)](graph/build.py)
+[![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?style=flat-square&logo=fastapi&logoColor=white)](app/main.py)
+[![React](https://img.shields.io/badge/React-TypeScript-61DAFB?style=flat-square&logo=react&logoColor=black)](frontend)
+[![Postgres](https://img.shields.io/badge/Postgres-checkpointed-4169E1?style=flat-square&logo=postgresql&logoColor=white)](docs/CHECKPOINTING.md)
+[![Pinecone](https://img.shields.io/badge/Pinecone-RAG-000000?style=flat-square)](tools/retrieval.py)
+[![OpenAI](https://img.shields.io/badge/OpenAI-LLM-412991?style=flat-square&logo=openai&logoColor=white)](graph/nodes)
+![status](https://img.shields.io/badge/status-approval--gated%20execution%20live-brightgreen?style=flat-square)
 
 **Live:** [resolveflow-web-officialbidishas-projects.vercel.app](https://resolveflow-web-officialbidishas-projects.vercel.app) &middot; API: [resolveflow-1h99.onrender.com](https://resolveflow-1h99.onrender.com/api/health)
+
+</div>
+
+<br>
 
 ResolveFlow takes a GitHub issue URL, gathers evidence, classifies the
 issue, and — depending on that classification — either runs a
@@ -38,36 +46,42 @@ is real, what is a deliberate placeholder, and what is simply unbuilt.
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    issue([issue_url]) --> fetch[fetch_evidence]
+    fetch --> normalize[normalize_evidence]
+    normalize --> classify{classify}
+
+    classify -- "deterministic<br/>(failing CI)" --> gate1[await_approval*]
+    classify -- "ai_investigation<br/>(sparse issue)" --> diagnose["generate_diagnosis<br/>LLM, structured output + RAG citations"]
+    classify -- "human_review<br/>(ambiguous / risky)" --> end1((END))
+
+    diagnose --> review["independent_review<br/>separate LLM call - groundedness,<br/>risk, permission checks"]
+
+    review -- approve --> gate1
+    review -- escalate_to_human --> end2((END))
+    review -. "reject_retrieve_more<br/>(not built)" .-> diagnose
+
+    gate1 -- "approved" --> exec["execute†"]
+    gate1 -- "rejected" --> end3((END))
+    exec --> end4((END))
+
+    classDef evidence fill:#e8f0fe,stroke:#4285f4,color:#1a237e;
+    classDef routing fill:#fff8e1,stroke:#f9a825,color:#5d4037;
+    classDef reasoning fill:#ede7f6,stroke:#7e57c2,color:#311b92;
+    classDef reviewer fill:#e0f2f1,stroke:#00897b,color:#004d40;
+    classDef gate fill:#ffebee,stroke:#e53935,color:#b71c1c,stroke-width:2px;
+    classDef endpoint fill:#f5f5f5,stroke:#9e9e9e,color:#616161;
+
+    class fetch,normalize evidence
+    class classify routing
+    class diagnose reasoning
+    class review reviewer
+    class gate1,exec gate
+    class end1,end2,end3,end4 endpoint
 ```
-issue_url
-   |
-fetch_evidence -> normalize_evidence -> classify
-                                            |
-                    +-----------------------+-----------------------+
-                    |                       |                       |
-              deterministic          ai_investigation           human_review
-             (failing CI)            (sparse issue)            (ambiguous/risky)
-                    |                       |                       |
-             await_approval*     generate_diagnosis (LLM,          END
-                    |             structured output + RAG
-                   ...           citations)
-                                            |
-                                  independent_review (LLM,
-                                  separate call — groundedness,
-                                  risk, permission checks)
-                                            |
-                    +-----------------------+-----------------------+
-                    |                       |                       |
-                 approve          escalate_to_human      reject_retrieve_more
-                    |                       |                       |
-             await_approval*               END              generate_diagnosis
-                    |                                            (loop, not built)
-        (conditional on state["approved"])
-              /            \
-          execute†          END
-              |
-             END
-```
+
+<sub>🔴 red = the human-approval gate and the only node with side effects &nbsp;·&nbsp; 🟣 purple = LLM reasoning &nbsp;·&nbsp; 🟢 teal = the independent LLM reviewer &nbsp;·&nbsp; 🟡 amber = deterministic routing &nbsp;·&nbsp; 🔵 blue = evidence gathering</sub>
 
 `*` `await_approval` builds the exact comment/label that would be posted,
 then pauses via LangGraph's `interrupt()` — every path to `execute` goes
@@ -178,10 +192,10 @@ the Roadmap. Conflating the two is a common mistake: a safety gate that
 | `classify` | ✅ Rule-based routing (deliberate — see the node's docstring) |
 | `generate_diagnosis` | ✅ Real OpenAI call, structured `Diagnosis` output with citations, grounded via real Pinecone retrieval |
 | `independent_review` | ✅ Separate OpenAI critique call; approve/escalate gate computed in code, not trusted from the LLM |
-| Retrieval corpus | ✅ `ingest.py` builds a real Pinecone index (`resolveflow-issues`, ~2,750 chunks) from closed issues across 4 real repos (`facebook/react`, `langchain-ai/langchain`, `microsoft/terminal`, `vercel/next.js`; `text-embedding-3-small`), self-healing (creates the index if missing), idempotent (clears stale vectors before re-ingesting). `.github/workflows/reingest.yml` re-runs it weekly so the index doesn't go stale without manual intervention (needs `OPENAI_API_KEY`/`PINECONE_API_KEY` as repo secrets — see Setup). `tools/retrieval.py` queries it directly, now surfacing each snippet's cosine similarity `score`; `independent_review.py`'s `groundedness_ok` gate requires citations to clear `MIN_RELEVANCE_SCORE` (0.35, calibrated against real query scores — see the node's docstring), not just be a real-but-possibly-irrelevant retrieved id. That's the "detect bad retrieval and recover" half: a genuinely novel issue with no real corpus match now correctly escalates to human rather than getting confidently rubber-stamped on noise. Verified against real issues end-to-end: correct, specific, citation-grounded root-cause diagnoses on real bugs — see `CHANGELOG.md` for `facebook/react#36932`. |
-| `execute` + human approval gate | ✅ `await_approval` builds the proposed comment/label and pauses via `interrupt()`; every path to `execute` goes through it. `execute` posts that exact payload via `tools/github_client.py`, gated on `state["approved"]`. The deployed FastAPI backend drives the real approve/reject flow via `Command(resume=...)`, checkpointed with `AsyncPostgresSaver`. Verified end-to-end (mocked GitHub reads/writes, real OpenAI + Pinecone calls): interrupt payload and posted content match exactly. See [`docs/CHECKPOINTING.md`](./docs/CHECKPOINTING.md) for the resume mechanism in detail, with a sequence diagram. |
-| React frontend + FastAPI backend | ✅ `frontend/` (Vite + React + TypeScript) talks to `app/main.py` (FastAPI) over HTTP — the only deployed surface. Backend is fully async and uses `AsyncPostgresSaver` (a real Postgres instance) as its checkpointer — not local SQLite, which Render's free-tier ephemeral disk wipes on every spin-down/spin-up, silently losing any paused approval. `vercel.json` proxies `/api/*` to the Render backend so the session cookie is first-party to the browser, not a cross-site cookie Chrome would otherwise block. The UI renders a live pipeline stepper (`fetch → classify → diagnose → review → approve → execute`) computed directly from the same `GraphResult` the rest of the page renders — not decorative, and correctly shows `deterministic`/`human_review`/`escalate_to_human` paths as skipping steps they'll never reach, rather than stuck "pending" forever. Deployed: frontend on Vercel, backend on Render. Verified end-to-end on the live production URLs. |
-| GitHub OAuth ("Sign in with GitHub") | ✅ Any visitor can sign in with their own GitHub account; reads/writes then run as *them*, not the deployment owner's shared `GITHUB_TOKEN`. `app/db.py` adds a `sessions` table (opaque cookie -> real token, kept server-side), a `thread_owners` table (a paused run can only be resumed by the session that started it), and a per-user `analyze_calls` daily cap — all in the same Postgres as the checkpointer, on a separate connection pool. The owner's `OPENAI_API_KEY`/`PINECONE_API_KEY` still fund every diagnosis regardless of who's asking, which is exactly what the daily cap bounds. |
+| Retrieval corpus | ✅ Real Pinecone index, ~2,750 chunks, weekly auto re-ingest, relevance-gated citations. <details><summary>details</summary>`ingest.py` builds a real Pinecone index (`resolveflow-issues`, ~2,750 chunks) from closed issues across 4 real repos (`facebook/react`, `langchain-ai/langchain`, `microsoft/terminal`, `vercel/next.js`; `text-embedding-3-small`), self-healing (creates the index if missing), idempotent (clears stale vectors before re-ingesting). `.github/workflows/reingest.yml` re-runs it weekly so the index doesn't go stale without manual intervention (needs `OPENAI_API_KEY`/`PINECONE_API_KEY` as repo secrets — see Setup). `tools/retrieval.py` queries it directly, now surfacing each snippet's cosine similarity `score`; `independent_review.py`'s `groundedness_ok` gate requires citations to clear `MIN_RELEVANCE_SCORE` (0.35, calibrated against real query scores — see the node's docstring), not just be a real-but-possibly-irrelevant retrieved id. That's the "detect bad retrieval and recover" half: a genuinely novel issue with no real corpus match now correctly escalates to human rather than getting confidently rubber-stamped on noise. Verified against real issues end-to-end: correct, specific, citation-grounded root-cause diagnoses on real bugs — see `CHANGELOG.md` for `facebook/react#36932`.</details> |
+| `execute` + human approval gate | ✅ Real `interrupt()` pause, resumed via `Command(resume=...)`, verified byte-for-byte end-to-end. <details><summary>details</summary>`await_approval` builds the proposed comment/label and pauses via `interrupt()`; every path to `execute` goes through it. `execute` posts that exact payload via `tools/github_client.py`, gated on `state["approved"]`. The deployed FastAPI backend drives the real approve/reject flow via `Command(resume=...)`, checkpointed with `AsyncPostgresSaver`. Verified end-to-end (mocked GitHub reads/writes, real OpenAI + Pinecone calls): interrupt payload and posted content match exactly. See [`docs/CHECKPOINTING.md`](./docs/CHECKPOINTING.md) for the resume mechanism in detail, with a sequence diagram.</details> |
+| React frontend + FastAPI backend | ✅ Deployed (Vercel + Render), async backend, Postgres-checkpointed, live pipeline stepper. <details><summary>details</summary>`frontend/` (Vite + React + TypeScript) talks to `app/main.py` (FastAPI) over HTTP — the only deployed surface. Backend is fully async and uses `AsyncPostgresSaver` (a real Postgres instance) as its checkpointer — not local SQLite, which Render's free-tier ephemeral disk wipes on every spin-down/spin-up, silently losing any paused approval. `vercel.json` proxies `/api/*` to the Render backend so the session cookie is first-party to the browser, not a cross-site cookie Chrome would otherwise block. The UI renders a live pipeline stepper (`fetch → classify → diagnose → review → approve → execute`) computed directly from the same `GraphResult` the rest of the page renders — not decorative, and correctly shows `deterministic`/`human_review`/`escalate_to_human` paths as skipping steps they'll never reach, rather than stuck "pending" forever. Deployed: frontend on Vercel, backend on Render. Verified end-to-end on the live production URLs.</details> |
+| GitHub OAuth ("Sign in with GitHub") | ✅ Any visitor signs in with their own account; writes run as them, bounded by a per-user daily cap. <details><summary>details</summary>Any visitor can sign in with their own GitHub account; reads/writes then run as *them*, not the deployment owner's shared `GITHUB_TOKEN`. `app/db.py` adds a `sessions` table (opaque cookie -> real token, kept server-side), a `thread_owners` table (a paused run can only be resumed by the session that started it), and a per-user `analyze_calls` daily cap — all in the same Postgres as the checkpointer, on a separate connection pool. The owner's `OPENAI_API_KEY`/`PINECONE_API_KEY` still fund every diagnosis regardless of who's asking, which is exactly what the daily cap bounds.</details> |
 | `eval/` | 🟡 Safety-gate regression suite: `classify()`'s routing precedence, `independent_review()`'s groundedness/risk gate, `execute()`'s permission check + verbatim-posting (GitHub writes mocked — never real). Code-graded, `pass^k` semantics (any single failure across trials is a critical bug, not an average). Run with `uv run python -m eval.harness`. Not yet built: a capability suite for `generate_diagnosis` output quality (model-graded, different bar — expected to improve over time, not sit at 100%). |
 | Tests | ❌ Not written yet. |
 
