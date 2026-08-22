@@ -73,7 +73,6 @@ GITHUB_OAUTH_CLIENT_ID = os.environ["GITHUB_OAUTH_CLIENT_ID"]
 GITHUB_OAUTH_CLIENT_SECRET = os.environ["GITHUB_OAUTH_CLIENT_SECRET"]
 
 SESSION_COOKIE = "session_id"
-STATE_COOKIE = "oauth_state"
 
 _state: dict = {}
 
@@ -147,22 +146,23 @@ async def health() -> dict:
 @app.get("/api/auth/github/login")
 async def github_login() -> RedirectResponse:
     state = secrets.token_urlsafe(24)
+    # Persisted server-side (see app/db.py's oauth_states) rather than in a
+    # cookie: this deployment is reachable on more than one Vercel domain
+    # alias, but GitHub's OAuth callback always lands on the single one
+    # registered for this OAuth App, so a cookie set on the *starting*
+    # domain wouldn't reliably reach the callback.
+    await db.insert_oauth_state(_state["pool"], state)
     # No explicit redirect_uri: this OAuth App has exactly one registered
     # callback URL, and GitHub uses that by default when it's omitted.
-    redirect = RedirectResponse(
+    return RedirectResponse(
         "https://github.com/login/oauth/authorize?"
         f"client_id={GITHUB_OAUTH_CLIENT_ID}&scope=public_repo&state={state}"
     )
-    # Short-lived, checked (and cleared) on callback — CSRF protection for
-    # the OAuth handshake, not a real session.
-    redirect.set_cookie(STATE_COOKIE, state, max_age=600, httponly=True, secure=True, samesite="lax")
-    return redirect
 
 
 @app.get("/api/auth/github/callback")
 async def github_callback(request: Request, code: str, state: str) -> RedirectResponse:
-    expected_state = request.cookies.get(STATE_COOKIE)
-    if not expected_state or state != expected_state:
+    if not await db.consume_oauth_state(_state["pool"], state):
         raise HTTPException(status_code=400, detail="invalid OAuth state")
 
     async with httpx.AsyncClient() as client:
@@ -199,7 +199,6 @@ async def github_callback(request: Request, code: str, state: str) -> RedirectRe
     session_id = await db.create_session(_state["pool"], gh_user["id"], gh_user["login"], access_token)
 
     redirect = RedirectResponse(FRONTEND_URL)
-    redirect.delete_cookie(STATE_COOKIE)
     redirect.set_cookie(
         SESSION_COOKIE, session_id, max_age=60 * 60 * 24 * 30, httponly=True, secure=True, samesite="lax"
     )

@@ -34,6 +34,19 @@ CREATE TABLE IF NOT EXISTS thread_owners (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Server-side CSRF state for the OAuth handshake. Not a cookie: Vercel
+-- gives this deployment more than one live domain alias (its short
+-- <project>.vercel.app auto-alias alongside the canonical
+-- <project>-<team>.vercel.app one this app's single GitHub OAuth callback
+-- URL is registered against), and a visitor can start the login on either
+-- one. A host-only cookie set on the *starting* domain never reaches the
+-- callback when it lands on the *other* domain, so state must be looked
+-- up here instead of read back from the browser.
+CREATE TABLE IF NOT EXISTS oauth_states (
+    state           TEXT PRIMARY KEY,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS analyze_calls (
     github_user_id  BIGINT NOT NULL,
     day             DATE NOT NULL,
@@ -79,6 +92,23 @@ async def get_session_user(pool: AsyncConnectionPool, session_id: str) -> Sessio
 async def delete_session(pool: AsyncConnectionPool, session_id: str) -> None:
     async with pool.connection() as conn:
         await conn.execute("DELETE FROM sessions WHERE session_id = %s", (session_id,))
+
+
+async def insert_oauth_state(pool: AsyncConnectionPool, state: str) -> None:
+    async with pool.connection() as conn:
+        await conn.execute("INSERT INTO oauth_states (state) VALUES (%s)", (state,))
+
+
+async def consume_oauth_state(pool: AsyncConnectionPool, state: str) -> bool:
+    """Single-use, 10-minute-TTL check: true iff `state` was issued and not yet consumed/expired."""
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "DELETE FROM oauth_states WHERE state = %s AND created_at > now() - interval '10 minutes' "
+            "RETURNING state",
+            (state,),
+        )
+        row = await cur.fetchone()
+    return row is not None
 
 
 async def record_thread_owner(pool: AsyncConnectionPool, thread_id: str, github_user_id: int) -> None:
