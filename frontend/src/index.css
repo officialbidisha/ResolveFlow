@@ -149,6 +149,7 @@ body {
 .auth-signin {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   background: var(--reason);
   color: #0c1220;
   font-weight: 600;
@@ -290,6 +291,72 @@ body {
   .pipeline-line {
     margin: 0 4px;
   }
+}
+
+/* ---------- sign-in gate ---------- */
+
+.signin-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 36px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.signin-gate-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--reason-dim);
+  color: var(--reason);
+  margin-bottom: 4px;
+}
+
+.signin-gate-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.signin-gate-copy {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-dim);
+  max-width: 46ch;
+}
+
+.signin-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--reason);
+  color: #0c1220;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 14.5px;
+  text-decoration: none;
+  padding: 11px 22px;
+  border-radius: 8px;
+  margin-top: 10px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset, 0 6px 16px rgba(127, 163, 234, 0.22);
+  transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.signin-cta:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset, 0 8px 20px rgba(127, 163, 234, 0.32);
+}
+
+.signin-cta:active {
+  transform: translateY(1px);
 }
 
 /* ---------- input ---------- */
