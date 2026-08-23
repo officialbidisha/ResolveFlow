@@ -29,27 +29,41 @@ jobs:
   deploy-frontend:
     needs: verify
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
       - name: Deploy to Vercel
-        uses: vercel/action@v5
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          production: true
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "⚠️  VERCEL_TOKEN not set. Skipping Vercel deployment."
+            echo "To enable auto-deploy:"
+            echo "1. Get Vercel token from https://vercel.com/account/tokens"
+            echo "2. Add to GitHub Secrets: VERCEL_TOKEN"
+            exit 0
+          fi
+
+          npm install -g vercel
+          vercel deploy --token ${{ secrets.VERCEL_TOKEN }} --prod
+        working-directory: ./
 
   deploy-backend:
     needs: verify
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
-
       - name: Deploy to Render
         run: |
+          if [ -z "${{ secrets.RENDER_API_KEY }}" ] || [ -z "${{ secrets.RENDER_SERVICE_ID }}" ]; then
+            echo "⚠️  RENDER_API_KEY or RENDER_SERVICE_ID not set. Skipping Render deployment."
+            echo "To enable auto-deploy:"
+            echo "1. Get Render API key from https://dashboard.render.com/account/api-tokens"
+            echo "2. Get service ID from your Render service URL"
+            echo "3. Add to GitHub Secrets: RENDER_API_KEY, RENDER_SERVICE_ID"
+            exit 0
+          fi
+
           curl -X POST https://api.render.com/deploy/srv-${{ secrets.RENDER_SERVICE_ID }}?key=${{ secrets.RENDER_API_KEY }}
-        if: github.ref == 'refs/heads/main'
 
   notification:
     needs: [deploy-frontend, deploy-backend]
