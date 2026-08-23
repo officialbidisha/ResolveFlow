@@ -1,0 +1,20 @@
+name: Keep backend warm
+
+# Pings the Render free-tier backend so it doesn't spin down from
+# inactivity (free tier sleeps after ~15 min idle, then takes 30-50s to
+# wake on the next request). This only narrows the cold-start window
+# while the schedule is enabled — it doesn't guarantee warmth (GitHub
+# Actions schedules can slip under load, and this workflow itself only
+# runs on activity within 60 days per repo). Meant to be turned on
+# before a live demo/interview and deleted or disabled afterward, not
+# run indefinitely — it eats into the 750 free instance-hours/month.
+on:
+  schedule:
+    - cron: "*/10 * * * *" # every 10 minutes
+  workflow_dispatch: {} # allow a manual run from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -sf https://resolveflow-1h99.onrender.com/api/health
