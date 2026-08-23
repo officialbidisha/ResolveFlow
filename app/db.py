@@ -53,6 +53,20 @@ CREATE TABLE IF NOT EXISTS analyze_calls (
     count           INT NOT NULL DEFAULT 0,
     PRIMARY KEY (github_user_id, day)
 );
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id              SERIAL PRIMARY KEY,
+    thread_id       TEXT NOT NULL,
+    github_user_id  BIGINT NOT NULL,
+    repo            TEXT NOT NULL,
+    issue_number    INT NOT NULL,
+    verdict         TEXT NOT NULL CHECK (verdict IN ('correct', 'incorrect', 'incomplete')),
+    reason          TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_thread_id ON feedback(thread_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_repo_issue ON feedback(repo, issue_number);
 """
 
 
@@ -141,3 +155,54 @@ async def increment_and_check_daily_limit(pool: AsyncConnectionPool, github_user
         )
         (count,) = await cur.fetchone()
     return count <= DAILY_ANALYZE_LIMIT
+
+
+async def submit_feedback(
+    pool: AsyncConnectionPool,
+    thread_id: str,
+    github_user_id: int,
+    repo: str,
+    issue_number: int,
+    verdict: str,
+    reason: str | None = None,
+) -> None:
+    """Store customer feedback on a diagnosis."""
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO feedback (thread_id, github_user_id, repo, issue_number, verdict, reason) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (thread_id, github_user_id, repo, issue_number, verdict, reason),
+        )
+
+
+async def get_feedback_by_issue(pool: AsyncConnectionPool, repo: str, issue_number: int) -> list[dict]:
+    """Get all feedback for a specific issue."""
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT id, thread_id, github_user_id, verdict, reason, created_at "
+            "FROM feedback WHERE repo = %s AND issue_number = %s "
+            "ORDER BY created_at DESC",
+            (repo, issue_number),
+        )
+        rows = await cur.fetchall()
+    return [
+        {
+            "id": row[0],
+            "thread_id": row[1],
+            "github_user_id": row[2],
+            "verdict": row[3],
+            "reason": row[4],
+            "created_at": row[5],
+        }
+        for row in rows
+    ]
+
+
+async def get_feedback_summary(pool: AsyncConnectionPool) -> dict:
+    """Get aggregated feedback stats for monitoring."""
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT verdict, COUNT(*) as count FROM feedback GROUP BY verdict"
+        )
+        rows = await cur.fetchall()
+    return {row[0]: row[1] for row in rows}

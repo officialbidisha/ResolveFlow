@@ -126,6 +126,13 @@ class ResumeRequest(BaseModel):
     approved: bool
 
 
+class FeedbackRequest(BaseModel):
+    repo: str
+    issue_number: int
+    verdict: str  # "correct", "incorrect", or "incomplete"
+    reason: str | None = None
+
+
 def _serialize(thread_id: str, result: dict) -> dict:
     evidence = result.get("evidence")
     diagnosis = result.get("diagnosis")
@@ -268,3 +275,44 @@ async def resume(thread_id: str, req: ResumeRequest, user: db.SessionUser = Depe
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return _serialize(thread_id, result)
+
+
+@app.post("/api/feedback/{thread_id}")
+async def submit_feedback(
+    thread_id: str, req: FeedbackRequest, user: db.SessionUser = Depends(current_user)
+) -> dict:
+    """Submit feedback on a diagnosis.
+
+    Verdicts: 'correct' | 'incorrect' | 'incomplete'
+    This data trains the eval suite and helps identify weak spots.
+    """
+    owner_id = await db.get_thread_owner(_state["pool"], thread_id)
+    if owner_id != user.github_user_id:
+        raise HTTPException(status_code=403, detail="not the owner of this analysis run")
+
+    if req.verdict not in ("correct", "incorrect", "incomplete"):
+        raise HTTPException(status_code=400, detail="verdict must be 'correct', 'incorrect', or 'incomplete'")
+
+    await db.submit_feedback(
+        _state["pool"],
+        thread_id=thread_id,
+        github_user_id=user.github_user_id,
+        repo=req.repo,
+        issue_number=req.issue_number,
+        verdict=req.verdict,
+        reason=req.reason,
+    )
+
+    return {"status": "feedback recorded"}
+
+
+@app.get("/api/feedback/stats")
+async def feedback_stats() -> dict:
+    """Get aggregated feedback statistics (public, no auth required)."""
+    stats = await db.get_feedback_summary(_state["pool"])
+    return {
+        "correct": stats.get("correct", 0),
+        "incorrect": stats.get("incorrect", 0),
+        "incomplete": stats.get("incomplete", 0),
+        "total": sum(stats.values()),
+    }
