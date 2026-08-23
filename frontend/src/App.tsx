@@ -121,6 +121,7 @@ export default function App() {
   const [result, setResult] = useState<GraphResult | null>(null);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [userLoading, setUserLoading] = useState(true);
+  const [slowHint, setSlowHint] = useState(false);
 
   const busy = phase !== "idle";
 
@@ -148,6 +149,10 @@ export default function App() {
     }
     setError(null);
     setPhase("analyzing");
+    // Render's free tier spins the backend down after ~15 min idle; a cold
+    // start takes 30-50s to wake. Past a normal LLM round trip, swap the
+    // label so a slow first request reads as "expected" instead of "hung."
+    const slowTimer = setTimeout(() => setSlowHint(true), 4000);
     try {
       const data = await analyze(issueUrl.trim());
       setResult(data);
@@ -155,6 +160,8 @@ export default function App() {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setResult(null);
     } finally {
+      clearTimeout(slowTimer);
+      setSlowHint(false);
       setPhase("idle");
     }
   }
@@ -219,7 +226,11 @@ export default function App() {
         />
         <button type="submit" disabled={busy || !user}>
           {phase === "analyzing" && <span className="spinner" />}
-          {phase === "analyzing" ? "Analyzing…" : "Analyze"}
+          {phase === "analyzing"
+            ? slowHint
+              ? "Still working — waking up the server can take up to a minute…"
+              : "Analyzing…"
+            : "Analyze"}
         </button>
       </form>
 
