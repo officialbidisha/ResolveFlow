@@ -1,0 +1,15 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "outputDirectory": "frontend/dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://resolveflow-1h99.onrender.com/api/$1"
+    }
+  ],
+  "env": {
+    "VITE_API_URL": "@vite-api-url"
+  }
+}

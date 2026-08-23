@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: resolveflow-api
+    runtime: python
+    pythonVersion: "3.12"
+    buildCommand: "uv sync"
+    startCommand: "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_ID
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: "https://resolveflow-web-officialbidishas-projects.vercel.app"
+    healthCheckPath: /api/health
+    healthCheckInterval: 30
+    maxInstances: 3
+    autoRestart: on_failure

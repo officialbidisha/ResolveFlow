@@ -1,0 +1,68 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -q uv
+          uv sync
+
+      - name: Run safety-gate evals
+        run: uv run python -m eval.harness
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+
+  deploy-frontend:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        uses: vercel/action@v5
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          production: true
+
+  deploy-backend:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Render
+        run: |
+          curl -X POST https://api.render.com/deploy/srv-${{ secrets.RENDER_SERVICE_ID }}?key=${{ secrets.RENDER_API_KEY }}
+        if: github.ref == 'refs/heads/main'
+
+  notification:
+    needs: [deploy-frontend, deploy-backend]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Deployment Status
+        run: |
+          if [[ "${{ needs.deploy-frontend.result }}" == "success" && "${{ needs.deploy-backend.result }}" == "success" ]]; then
+            echo "✅ Deployment successful!"
+            echo "Frontend: https://resolveflow-web-officialbidishas-projects.vercel.app"
+            echo "Backend: https://resolveflow-1h99.onrender.com"
+          else
+            echo "❌ Deployment failed"
+            exit 1
+          fi
