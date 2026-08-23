@@ -1,0 +1,92 @@
+[
+  {
+    "test": "severity_is_valid_enum",
+    "passed": true,
+    "severity": "high",
+    "valid_options": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "case": 0,
+    "repo": "microsoft/terminal",
+    "issue": 19807
+  },
+  {
+    "test": "severity_is_valid_enum",
+    "passed": true,
+    "severity": "high",
+    "valid_options": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "case": 1,
+    "repo": "microsoft/terminal",
+    "issue": 20438
+  },
+  {
+    "test": "severity_is_valid_enum",
+    "passed": true,
+    "severity": "high",
+    "valid_options": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "case": 2,
+    "repo": "facebook/react",
+    "issue": 36423
+  },
+  {
+    "test": "diagnosis_citations_no_hallucination",
+    "passed": true,
+    "diagnosis_citations": [
+      "microsoft-terminal-issue-20301#0",
+      "microsoft-terminal-issue-19667#21"
+    ],
+    "retrieved_ids": [
+      "microsoft-terminal-issue-20301#0",
+      "microsoft-terminal-issue-19667#21",
+      "microsoft-terminal-issue-16485#1"
+    ],
+    "invalid_citations": [],
+    "case": 0,
+    "repo": "microsoft/terminal",
+    "issue": 19807
+  },
+  {
+    "test": "diagnosis_citations_no_hallucination",
+    "passed": true,
+    "diagnosis_citations": [
+      "microsoft-terminal-issue-20301#0",
+      "microsoft-terminal-issue-19667#21"
+    ],
+    "retrieved_ids": [
+      "microsoft-terminal-issue-20301#0",
+      "microsoft-terminal-issue-19667#21",
+      "microsoft-terminal-issue-16485#1"
+    ],
+    "invalid_citations": [],
+    "case": 1,
+    "repo": "microsoft/terminal",
+    "issue": 20438
+  },
+  {
+    "test": "diagnosis_citations_no_hallucination",
+    "passed": true,
+    "diagnosis_citations": [
+      "facebook-react-issue-15171#1",
+      "facebook-react-issue-36143#22"
+    ],
+    "retrieved_ids": [
+      "facebook-react-issue-36689#0",
+      "facebook-react-issue-15171#1",
+      "facebook-react-issue-36143#22"
+    ],
+    "invalid_citations": [],
+    "case": 2,
+    "repo": "facebook/react",
+    "issue": 36423
+  }
+]
