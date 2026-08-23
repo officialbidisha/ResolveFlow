@@ -44,7 +44,7 @@ jobs:
           fi
 
           npm install -g vercel
-          vercel deploy --token ${{ secrets.VERCEL_TOKEN }} --prod
+          vercel deploy --token ${{ secrets.VERCEL_TOKEN }} --prod --yes
         working-directory: ./
 
   deploy-backend:
