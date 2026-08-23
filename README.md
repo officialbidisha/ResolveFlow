@@ -33,7 +33,7 @@ node itself, not just at an API boundary.
 
 **Contents:** [Why this exists](#why-this-exists) · [Architecture](#architecture)
 · [Core concepts](#core-concepts) · [Status](#status) · [Setup](#setup) ·
-[Running](#running) · [Roadmap](#roadmap)
+[Evaluation](#evaluation) · [Running](#running) · [Roadmap](#roadmap)
 
 ## Why this exists
 
@@ -196,8 +196,8 @@ the Roadmap. Conflating the two is a common mistake: a safety gate that
 | `execute` + human approval gate | ✅ Real `interrupt()` pause, resumed via `Command(resume=...)`, verified byte-for-byte end-to-end. <details><summary>details</summary>`await_approval` builds the proposed comment/label and pauses via `interrupt()`; every path to `execute` goes through it. `execute` posts that exact payload via `tools/github_client.py`, gated on `state["approved"]`. The deployed FastAPI backend drives the real approve/reject flow via `Command(resume=...)`, checkpointed with `AsyncPostgresSaver`. Verified end-to-end (mocked GitHub reads/writes, real OpenAI + Pinecone calls): interrupt payload and posted content match exactly. See [`docs/CHECKPOINTING.md`](./docs/CHECKPOINTING.md) for the resume mechanism in detail, with a sequence diagram.</details> |
 | React frontend + FastAPI backend | ✅ Deployed (Vercel + Render), async backend, Postgres-checkpointed, live pipeline stepper. <details><summary>details</summary>`frontend/` (Vite + React + TypeScript) talks to `app/main.py` (FastAPI) over HTTP — the only deployed surface. Backend is fully async and uses `AsyncPostgresSaver` (a real Postgres instance) as its checkpointer — not local SQLite, which Render's free-tier ephemeral disk wipes on every spin-down/spin-up, silently losing any paused approval. `vercel.json` proxies `/api/*` to the Render backend so the session cookie is first-party to the browser, not a cross-site cookie Chrome would otherwise block. The UI renders a live pipeline stepper (`fetch → classify → diagnose → review → approve → execute`) computed directly from the same `GraphResult` the rest of the page renders — not decorative, and correctly shows `deterministic`/`human_review`/`escalate_to_human` paths as skipping steps they'll never reach, rather than stuck "pending" forever. Deployed: frontend on Vercel, backend on Render. Verified end-to-end on the live production URLs.</details> |
 | GitHub OAuth ("Sign in with GitHub") | ✅ Any visitor signs in with their own account; writes run as them, bounded by a per-user daily cap. <details><summary>details</summary>Any visitor can sign in with their own GitHub account; reads/writes then run as *them*, not the deployment owner's shared `GITHUB_TOKEN`. `app/db.py` adds a `sessions` table (opaque cookie -> real token, kept server-side), a `thread_owners` table (a paused run can only be resumed by the session that started it), and a per-user `analyze_calls` daily cap — all in the same Postgres as the checkpointer, on a separate connection pool. The owner's `OPENAI_API_KEY`/`PINECONE_API_KEY` still fund every diagnosis regardless of who's asking, which is exactly what the daily cap bounds.</details> |
-| `eval/` | 🟡 Safety-gate regression suite: `classify()`'s routing precedence, `independent_review()`'s groundedness/risk gate, `execute()`'s permission check + verbatim-posting (GitHub writes mocked — never real). Code-graded, `pass^k` semantics (any single failure across trials is a critical bug, not an average). Run with `uv run python -m eval.harness`. Not yet built: a capability suite for `generate_diagnosis` output quality (model-graded, different bar — expected to improve over time, not sit at 100%). |
-| Tests | ❌ Not written yet. |
+| `eval/` | ✅ Two-tier eval framework: <details><summary>safety gates + capability evals</summary>**Safety-gate regression suite** (`eval/harness.py`): `classify()`'s routing precedence, `independent_review()`'s groundedness/risk gate, `execute()`'s permission check + verbatim-posting (GitHub writes mocked — never real). Code-graded, `pass^k` semantics: 12/12 passing, and the bar is 100% forever (one bypassed gate across trials is a critical failure, not an average). Run with `uv run python -m eval.harness`.<br><br>**Capability eval suite** (`eval/capability_harness.py`, *new*): Tests `generate_diagnosis` output quality (severity enum, citation grounding, retrieval relevance) against real issues extracted from the Pinecone corpus. Model-graded, expected to improve over time, different bar from safety gates. Currently 6/6 passing. Run with `uv run python -m eval.capability_harness`. Extract fresh test cases from your corpus with `python -m eval.extract_real_test_cases` (re-run whenever you re-ingest).</details> |
+| Tests | ❌ Unit/integration tests not written yet. |
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for the build history, and
 [`PLAN.md`](./PLAN.md) for the original 5-day/2-person plan this was
@@ -224,12 +224,49 @@ variables → Actions → New repository secret) — the same values already
 in your `.env`. `GITHUB_TOKEN` doesn't need to be added; Actions provides
 one automatically, sufficient for the read-only calls `ingest.py` makes.
 
+## Evaluation
+
+ResolveFlow has **two kinds of evals**, each with its own bar and semantics:
+
+### Safety Gates (Regression Suite)
+**Bar:** 100% forever. One failure = critical bug.
+
+```bash
+uv run python -m eval.harness
+```
+
+Tests the hard boundaries: `classify()`'s routing, `independent_review()`'s gates, `execute()`'s permission check. Each test has one unambiguous correct answer. Failures indicate the system weakened, not that it needs more training data.
+
+**Current:** 12/12 passing
+
+### Capability Evals
+**Bar:** Model-graded, expected to improve over time.
+
+```bash
+# Extract real test cases from your Pinecone corpus
+python -m eval.extract_real_test_cases
+
+# Run capability evals against those real issues
+uv run python -m eval.capability_harness
+```
+
+Tests output quality on `generate_diagnosis`: Is the severity a valid enum? Do citations match retrieved IDs (no hallucinations)? Are retrieved snippets actually relevant?
+
+**Current:** 6/6 passing on real issues from facebook/react and microsoft/terminal
+
+**Re-run `extract_real_test_cases` after each `ingest.py` run** to test against the latest corpus.
+
+Why two eval types? A safety gate that "mostly" works isn't a gate at all. The ability to diagnose issues well is a different bar — it *should* improve as the corpus grows and the prompt tunes, and averaging failures together obscures what's actually broken.
+
 ## Running
 
 ```bash
 uv run uvicorn app.main:app --reload                     # FastAPI backend, for the React frontend
 cd frontend && npm install && npm run dev                # React frontend (localhost:5173)
 uv run python ingest.py                                  # (re)populate the Pinecone index from live GitHub issues
+python -m eval.extract_real_test_cases                   # extract test cases from corpus
+uv run python -m eval.harness                            # run safety-gate regression tests
+uv run python -m eval.capability_harness                 # run capability evals
 uv run pytest                                             # once tests exist
 ```
 
@@ -237,7 +274,8 @@ Live: see the badges/links above. No local UI is needed to try it — the deploy
 
 ## Roadmap
 
-1. A capability eval for `generate_diagnosis` — model-graded diagnosis
-   quality against real issues, expected to improve over time (unlike
-   `eval/`'s existing safety-gate suite, which should sit at 100%).
-2. Tests for the node functions and the compiled graph.
+1. ✅ **Capability eval suite for `generate_diagnosis`** — model-graded diagnosis quality against real issues from the Pinecone corpus. Currently tests severity enum validity and citation grounding (no hallucinations). Extensible for retrieval quality, recommendation grounding, and consistency.
+2. **More capability eval types** — retrieve relevance, recommendation grounding, diagnosis consistency (same issue → same diagnosis).
+3. **CI/CD integration** — run both safety-gate and capability suites on every commit; set thresholds for gating deploys.
+4. **Live monitoring** — scheduled daily eval runs on production to catch regressions.
+5. Tests for the node functions and the compiled graph.
