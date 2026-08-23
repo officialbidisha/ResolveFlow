@@ -80,6 +80,34 @@ def get_check_runs(repo: str, ref: str, token: str | None = None) -> list[dict]:
     return resp.json().get("check_runs", [])
 
 
+def get_pull(repo: str, pr_number: int, token: str | None = None) -> dict:
+    resp = requests.get(
+        f"{GITHUB_API}/repos/{repo}/pulls/{pr_number}", headers=_headers(token), timeout=TIMEOUT
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_linked_pull_request(repo: str, issue_number: int, token: str | None = None) -> dict | None:
+    """Finds the first PR that references this issue, via the issue timeline
+    API's "cross-referenced" events — GitHub has no direct "linked PR" field
+    on an issue over REST. Returns the full PR object (so callers get
+    head.sha, merged, etc.) for the first match, or None if the issue has no
+    linked PR yet.
+    """
+    resp = requests.get(
+        f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/timeline", headers=_headers(token), timeout=TIMEOUT
+    )
+    resp.raise_for_status()
+    for event in resp.json():
+        if event.get("event") != "cross-referenced":
+            continue
+        source_issue = event.get("source", {}).get("issue", {})
+        if "pull_request" not in source_issue:
+            continue
+        pr_repo = source_issue.get("repository", {}).get("full_name", repo)
+        return get_pull(pr_repo, source_issue["number"], token=token)
+    return None
 
 
 def get_codeowners(repo: str, token: str | None = None) -> str | None:
