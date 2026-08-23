@@ -39,12 +39,14 @@ jobs:
             echo "⚠️  VERCEL_TOKEN not set. Skipping Vercel deployment."
             echo "To enable auto-deploy:"
             echo "1. Get Vercel token from https://vercel.com/account/tokens"
-            echo "2. Add to GitHub Secrets: VERCEL_TOKEN"
+            echo "2. Add to GitHub Secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID"
             exit 0
           fi
 
           npm install -g vercel
-          vercel deploy --token ${{ secrets.VERCEL_TOKEN }} --prod --yes
+          vercel deploy --token ${{ secrets.VERCEL_TOKEN }} --prod --yes \
+            --scope ${{ secrets.VERCEL_ORG_ID }} \
+            --project-id ${{ secrets.VERCEL_PROJECT_ID }}
         working-directory: ./
 
   deploy-backend:
