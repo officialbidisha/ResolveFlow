@@ -185,19 +185,18 @@ export default function App() {
       <header className="header">
         <div className="auth-bar">
           <div className="eyebrow">LangGraph &middot; approval-gated execution</div>
-          {!userLoading &&
-            (user ? (
-              <div className="auth-status">
-                <span className="mono">{user.login}</span>
-                <button type="button" className="auth-link" onClick={handleLogout}>
-                  Log out
-                </button>
-              </div>
-            ) : (
-              <a className="auth-signin" href={GITHUB_LOGIN_URL}>
-                Sign in with GitHub
-              </a>
-            ))}
+          {user ? (
+            <div className="auth-status">
+              <span className="mono">{user.login}</span>
+              <button type="button" className="auth-link" onClick={handleLogout}>
+                Log out
+              </button>
+            </div>
+          ) : (
+            <a className="auth-signin" href={GITHUB_LOGIN_URL}>
+              Sign in with GitHub
+            </a>
+          )}
         </div>
         <h1>ResolveFlow</h1>
         <p className="thesis">
