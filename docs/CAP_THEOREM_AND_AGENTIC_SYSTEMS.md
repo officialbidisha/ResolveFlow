@@ -1,6 +1,5 @@
 # CAP theorem — every angle an interviewer can pull on
 
-This is the exhaustive version. Read `RAG_SIMPLE.md` for the plain-language pass on RAG; this one assumes you've already got the CAP/PACELC basics from `CrowdStrike_Prep_Deep_Dive.md` §3.1 and today's conversation, and goes at every follow-up an interviewer could chain off it.
 
 ---
 
