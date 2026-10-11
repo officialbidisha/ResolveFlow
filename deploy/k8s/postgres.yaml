@@ -1,0 +1,33 @@
+# Throwaway local Postgres. emptyDir = data dies with the pod. NOT for real use.
+apiVersion: v1
+kind: Namespace
+metadata: {name: resolveflow}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: postgres, namespace: resolveflow}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: postgres}}
+  template:
+    metadata: {labels: {app: postgres}}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - {name: POSTGRES_PASSWORD, value: localonly}
+            - {name: POSTGRES_DB, value: resolveflow}
+          ports: [{containerPort: 5432}]
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", "postgres"]}
+            periodSeconds: 3
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+      volumes: [{name: data, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: postgres, namespace: resolveflow}
+spec:
+  selector: {app: postgres}
+  ports: [{port: 5432}]

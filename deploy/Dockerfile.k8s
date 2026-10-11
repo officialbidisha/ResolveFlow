@@ -1,0 +1,18 @@
+# Build context = ~/Desktop/ResolveFlow. Changes vs the repo's Dockerfile:
+#  - non-root user
+#  - copies only runtime code (+ sibling .dockerignore keeps .env/.git/frontend out)
+#  - exec-form CMD: uvicorn is PID 1 and receives SIGTERM directly (graceful shutdown)
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 PATH="/app/.venv/bin:$PATH"
+WORKDIR /app
+RUN pip install --no-cache-dir uv
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+COPY app ./app
+COPY graph ./graph
+COPY schemas ./schemas
+COPY tools ./tools
+RUN useradd --system --uid 10001 appuser
+USER 10001
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "25"]

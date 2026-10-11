@@ -1,0 +1,9 @@
+.git
+.env
+.env.*
+.venv
+**/__pycache__
+frontend
+docs
+eval
+crowdstrike-deepdive-study

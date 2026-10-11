@@ -1,0 +1,11 @@
+# eksctl create cluster -f cluster.yaml   (~15 min, starts billing: control plane ~$0.10/h + node)
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata: {name: resolveflow-test, region: ap-southeast-2, version: "1.35"}
+managedNodeGroups:
+  - name: ng-small
+    instanceType: t3.small      # Free Plan only allows free-tier-eligible types
+    desiredCapacity: 2                      # 2 nodes so a node drain doesn't take both replicas down
+    minSize: 2
+    maxSize: 3
+    volumeSize: 20

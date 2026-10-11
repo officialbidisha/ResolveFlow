@@ -1,0 +1,9 @@
+{ "_comment": "Trust policy for role 'resolveflow-ci'. Create the GitHub OIDC provider once (token.actions.githubusercontent.com). No long-lived keys.",
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"},
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                       "token.actions.githubusercontent.com:sub": "repo:officialbidisha/ResolveFlow:ref:refs/heads/main"}}}]}

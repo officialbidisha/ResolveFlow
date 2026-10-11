@@ -1,0 +1,24 @@
+# Proposed .github/workflows/eks.yml (NOT added to the repo). Render/Vercel deploys in deploy.yml stay untouched.
+name: eks
+on: {workflow_dispatch: {}}                 # manual trigger = approval gate while testing
+permissions: {id-token: write, contents: read}
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment: eks-test                   # add required reviewers on this environment
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: {role-to-assume: "arn:aws:iam::<ACCOUNT_ID>:role/resolveflow-ci", aws-region: ap-southeast-2}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+      - name: Build, push by SHA
+        run: docker build -f deploy/Dockerfile.k8s -t ${{ steps.ecr.outputs.registry }}/resolveflow:${{ github.sha }} . && docker push ${{ steps.ecr.outputs.registry }}/resolveflow:${{ github.sha }}
+      - name: Scan (fail on critical)
+        uses: aquasecurity/trivy-action@0.28.0
+        with: {image-ref: "${{ steps.ecr.outputs.registry }}/resolveflow:${{ github.sha }}", severity: CRITICAL, exit-code: "1"}
+      - name: Deploy and verify, roll back on failure
+        run: |
+          aws eks update-kubeconfig --name resolveflow-test
+          kubectl -n resolveflow set image deploy/resolveflow api=${{ steps.ecr.outputs.registry }}/resolveflow:${{ github.sha }}
+          kubectl -n resolveflow rollout status deploy/resolveflow --timeout=180s || { kubectl -n resolveflow rollout undo deploy/resolveflow; exit 1; }
