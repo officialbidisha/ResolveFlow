@@ -12,13 +12,18 @@ GitHub OAuth are unchanged. Nothing here runs from `.github/workflows`.
 | Failed rollout keeps old pods serving, `kubectl rollout undo` restores | local Kubernetes | bad image -> `ErrImageNeverPull`, old pods stayed Ready |
 | 401 on `/api/auth/me` and on resume with a forged cookie | local Kubernetes | HTTP codes |
 | Exactly-once GitHub writes (`docs/exactly-once/`) | local Postgres | `demo.py`: 5 racing callers -> 1 comment |
-| EKS control plane in `ap-southeast-2` | AWS | cluster `ACTIVE`, v1.35 |
+| EKS cluster in `ap-southeast-2` (v1.35, 2 x t3.small, 2 AZs) | AWS | control plane `ACTIVE`; both nodes `Ready`; aws-node, kube-proxy, coredns, metrics-server `Running` |
+| Image in ECR, immutable tags, scan-on-push; deployed **by digest** | AWS | running `imageID` equals the pushed digest |
+| ResolveFlow on EKS (`deploy/k8s/app-eks.yaml`): 2 replicas on 2 nodes, UID 10001 | AWS | `/api/health` 200, `/api/auth/me` 401, forged resume 401 (via `kubectl port-forward`; no public ingress); 9 tables created in an in-cluster throwaway Postgres |
+| Failed rollout + rollback on EKS | AWS | bad tag -> `ImagePullBackOff`; both old pods stayed Ready (2/2 available); `rollout undo` restored the digest |
+
+Not verified on EKS: real GitHub OAuth login (the OAuth callback is registered to the Vercel domain), public ingress, production traffic.
 
 ## Designed, not deployed
 
 ALB + ACM + WAF ingress, Secrets Manager (CSI), EKS Pod Identity, GitHub OIDC CI
 (`deploy/aws/ci-eks.yml.example`, `github-oidc-trust.json`), HPA, PodDisruptionBudget, NetworkPolicy,
-image signing/admission control, Bedrock / S3 Vectors retrieval, LLM gateway.
+image signing/admission control, Bedrock / S3 Vectors retrieval (see `docs/AWS_VECTOR_STORE_DESIGN.md`), LLM gateway.
 
 ## Problems hit and what they taught
 

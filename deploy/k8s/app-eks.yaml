@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: resolveflow, namespace: resolveflow}
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}   # never drop below desired capacity
+  selector: {matchLabels: {app: resolveflow}}
+  template:
+    metadata: {labels: {app: resolveflow}}
+    spec:
+      terminationGracePeriodSeconds: 40     # > preStop(5) + uvicorn graceful(25)
+      securityContext: {runAsNonRoot: true, runAsUser: 10001}
+      containers:
+        - name: api
+          image: <ACCOUNT_ID>.dkr.ecr.ap-southeast-2.amazonaws.com/resolveflow@sha256:<DIGEST>   # from deploy/aws/ecr-push.sh output
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8000}]
+          envFrom: [{secretRef: {name: resolveflow-secrets}}]
+          env:
+            - {name: DATABASE_URL, value: "postgresql://postgres:localonly@postgres:5432/resolveflow"}
+            - {name: FRONTEND_URL, value: "http://localhost:5173"}
+          resources:
+            requests: {cpu: 250m, memory: 384Mi}
+            limits: {memory: 768Mi}         # memory limit = OOM guard; no CPU limit => no CFS throttling of a latency-sensitive API
+          startupProbe:                     # covers slow boot (imports + Pinecone describe + schema setup)
+            httpGet: {path: /api/health, port: 8000}
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:                   # gates Service traffic
+            httpGet: {path: /api/health, port: 8000}
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:                    # restart only if the process is wedged
+            httpGet: {path: /api/health, port: 8000}
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop: {exec: {command: ["sleep", "5"]}}   # let endpoint removal propagate before SIGTERM
+---
+apiVersion: v1
+kind: Service
+metadata: {name: resolveflow, namespace: resolveflow}
+spec:
+  selector: {app: resolveflow}
+  ports: [{port: 80, targetPort: 8000}]
