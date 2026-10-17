@@ -6,6 +6,22 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Concurrency pass: async evidence fetch, request-scoped ContextVars, and
+  a bounded analyze gate.** `fetch_evidence` had five sequential blocking
+  GitHub calls; `afetch_evidence` runs the independent ones concurrently
+  (`asyncio.gather` over `asyncio.to_thread`, keeping `requests`; the
+  linked-PR -> check-runs pair stays a sequential chain), and
+  `graph/build.py` registers both variants so `invoke` and `ainvoke` keep
+  working. `graph/request_context.py` carries trace id / user id in
+  ContextVars (isolated per request, copied into worker threads) and stamps
+  them on every log line, including the `execute` write audit line;
+  `/api/analyze` responses now carry `X-Request-ID`. `app/limits.py` caps
+  concurrent analyze runs per process with an `asyncio.Semaphore`
+  (`MAX_CONCURRENT_ANALYSES`, default 4) and answers 503 + `Retry-After`
+  after `ANALYZE_QUEUE_WAIT_SECONDS` rather than queueing forever; the slot
+  is taken before the daily-quota increment so a shed request costs the
+  user nothing. Covered by `tests/test_concurrency.py`. See
+  `docs/CONCURRENCY.md`.
 - **Relevance-gated groundedness + scheduled re-ingestion for the RAG
   layer.** Root cause: diagnoses on issues with no genuinely similar
   corpus entry were reading as generic — `independent_review`'s

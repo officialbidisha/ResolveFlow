@@ -44,12 +44,13 @@ is no in-process UI anymore.
 
 from dotenv import load_dotenv
 load_dotenv()
-from graph.nodes.fetch_evidence import fetch_evidence
+from graph.nodes.fetch_evidence import afetch_evidence, fetch_evidence
 from graph.nodes.normalize_evidence import normalize_evidence
 from graph.nodes.classify import classify
 from graph.nodes.generate_diagnosis import generate_diagnosis
 from graph.nodes.independent_review import independent_review
 from graph.nodes.await_approval import await_approval
+from langchain_core.runnables import RunnableLambda
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END
 from graph.state import GraphState
@@ -58,7 +59,9 @@ from graph.serde import get_serde
 
 
 graph = StateGraph(GraphState)
-graph.add_node("fetch_evidence",fetch_evidence)
+# Both variants registered: graph.ainvoke (app/main.py) takes the concurrent
+# async path, graph.invoke (REPL, scripts) takes the sequential sync one.
+graph.add_node("fetch_evidence", RunnableLambda(fetch_evidence, afunc=afetch_evidence))
 graph.add_node("normalize_evidence",normalize_evidence)
 graph.add_node("classify",classify)
 graph.set_entry_point("fetch_evidence")

@@ -45,6 +45,7 @@ project's "not production-hardened" framing (see README).
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import uuid
@@ -64,6 +65,8 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
 from app import db
+from app.limits import AnalysisGate, GateBusy
+from graph import request_context
 from graph.build import graph
 from graph.serde import get_serde
 
@@ -73,6 +76,14 @@ GITHUB_OAUTH_CLIENT_ID = os.environ["GITHUB_OAUTH_CLIENT_ID"]
 GITHUB_OAUTH_CLIENT_SECRET = os.environ["GITHUB_OAUTH_CLIENT_SECRET"]
 
 SESSION_COOKIE = "session_id"
+
+# Per-process cap on concurrent analyze runs (see app/limits.py for why it is
+# per process and why the semaphore is built in lifespan).
+MAX_CONCURRENT_ANALYSES = int(os.environ.get("MAX_CONCURRENT_ANALYSES", "4"))
+ANALYZE_QUEUE_WAIT_SECONDS = float(os.environ.get("ANALYZE_QUEUE_WAIT_SECONDS", "10"))
+
+request_context.install_logging()
+log = logging.getLogger("resolveflow.api")
 
 _state: dict = {}
 
@@ -94,6 +105,7 @@ async def lifespan(app: FastAPI):
         await db.setup(pool)
         _state["compiled_graph"] = graph.compile(checkpointer=saver)
         _state["pool"] = pool
+        _state["analysis_gate"] = AnalysisGate(MAX_CONCURRENT_ANALYSES, ANALYZE_QUEUE_WAIT_SECONDS)
         yield
     _state.clear()
 
@@ -110,11 +122,27 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def trace_requests(request: Request, call_next):
+    # Correlation id for logs. Reuse a caller-supplied one (the Vercel proxy
+    # or a load balancer may already have set it) but never trust its shape:
+    # cap the length so it cannot be used to bloat or forge log lines.
+    trace_id = (request.headers.get("x-request-id") or "").strip()[:64] or uuid.uuid4().hex[:16]
+    if not trace_id.isprintable():
+        trace_id = uuid.uuid4().hex[:16]
+    with request_context.bind(trace_id=trace_id):
+        response = await call_next(request)
+    response.headers["X-Request-ID"] = trace_id
+    return response
+
+
 async def current_user(request: Request) -> db.SessionUser:
     session_id = request.cookies.get(SESSION_COOKIE)
     user = await db.get_session_user(_state["pool"], session_id) if session_id else None
     if user is None:
         raise HTTPException(status_code=401, detail="not signed in")
+    # Logging/audit correlation only -- authorization still comes from `user`.
+    request_context.set_user(user.github_user_id)
     return user
 
 
@@ -246,20 +274,32 @@ async def logout(request: Request, response: Response) -> dict:
 
 @app.post("/api/analyze")
 async def analyze(req: AnalyzeRequest, user: db.SessionUser = Depends(current_user)) -> dict:
-    if not await db.increment_and_check_daily_limit(_state["pool"], user.github_user_id):
-        raise HTTPException(
-            status_code=429, detail=f"daily analyze limit ({db.DAILY_ANALYZE_LIMIT}) reached — try again tomorrow"
-        )
-
-    thread_id = str(uuid.uuid4())
-    config = {"configurable": {"thread_id": thread_id}}
+    # Slot first, quota second: a request shed with 503 must not burn one of
+    # the user's daily analyses.
     try:
-        result = await _state["compiled_graph"].ainvoke(
-            {"issue_url": req.issue_url, "github_token": user.github_token}, config
-        )
-    except Exception as exc:  # noqa: BLE001 -- surfacing any pipeline failure to the client is the point
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    await db.record_thread_owner(_state["pool"], thread_id, user.github_user_id)
+        async with _state["analysis_gate"].slot():
+            if not await db.increment_and_check_daily_limit(_state["pool"], user.github_user_id):
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"daily analyze limit ({db.DAILY_ANALYZE_LIMIT}) reached — try again tomorrow",
+                )
+
+            thread_id = str(uuid.uuid4())
+            config = {"configurable": {"thread_id": thread_id}}
+            log.info("analyze start thread=%s issue=%s", thread_id, req.issue_url)
+            try:
+                result = await _state["compiled_graph"].ainvoke(
+                    {"issue_url": req.issue_url, "github_token": user.github_token}, config
+                )
+            except Exception as exc:  # noqa: BLE001 -- surfacing any pipeline failure to the client is the point
+                log.warning("analyze failed thread=%s: %s", thread_id, exc)
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            await db.record_thread_owner(_state["pool"], thread_id, user.github_user_id)
+    except GateBusy:
+        raise HTTPException(
+            status_code=503, detail="server is busy analysing other issues — retry shortly", headers={"Retry-After": "10"}
+        ) from None
+    log.info("analyze done thread=%s", thread_id)
     return _serialize(thread_id, result)
 
 

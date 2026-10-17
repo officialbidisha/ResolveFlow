@@ -11,10 +11,14 @@ see tools/github_client.py.
 
 from __future__ import annotations
 
+import logging
+
 import requests
 
 from graph.state import GraphState
 from tools.github_client import add_label, post_comment
+
+log = logging.getLogger("resolveflow.execute")
 
 
 def execute(state: GraphState) -> dict:
@@ -24,6 +28,11 @@ def execute(state: GraphState) -> dict:
     evidence = state["evidence"]
     action = state["proposed_action"]
     token = state.get("github_token")
+
+    # Audit line for the one node with side effects. trace/user ids are
+    # stamped by graph/request_context.py (this node runs in a worker
+    # thread; the context is copied into it).
+    log.info("github write repo=%s issue=%s label=%s", evidence.repo, evidence.issue_number, action.get("label"))
 
     result = {
         "comment": post_comment(evidence.repo, evidence.issue_number, action["comment"], token=token)
