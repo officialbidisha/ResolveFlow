@@ -32,8 +32,9 @@ GitHub refuses to run without an explicit `approved` flag — checked in the
 node itself, not just at an API boundary.
 
 **Contents:** [Why this exists](#why-this-exists) · [Architecture](#architecture)
-· [Core concepts](#core-concepts) · [Status](#status) · [Setup](#setup) ·
-[Evaluation](#evaluation) · [Running](#running) · [Roadmap](#roadmap)
+· [Core concepts](#core-concepts) · [Concurrency](#concurrency) ·
+[Deployment](#deployment) · [Status](#status) · [Setup](#setup) ·
+[Evaluation](#evaluation) · [Running](#running) · [Docs](#docs) · [Roadmap](#roadmap)
 
 ## Why this exists
 
@@ -184,6 +185,42 @@ expected to improve over time, and never was going to sit at 100% — see
 the Roadmap. Conflating the two is a common mistake: a safety gate that
 "mostly" holds isn't a safety gate.
 
+## Concurrency
+
+Everything slow here is network-bound (GitHub, OpenAI, Pinecone, Postgres), so
+the GIL is not the bottleneck and the design uses threads plus asyncio, not
+multiprocessing. Three deliberate primitives, each with a test:
+
+- **asyncio:** `afetch_evidence` runs the independent GitHub reads concurrently
+  (`asyncio.gather` over `asyncio.to_thread`); the PR -> check-runs pair stays a
+  sequential chain. Cost drops from the sum of five calls to the longest chain.
+  `graph/build.py` registers sync and async variants, so `invoke` and `ainvoke` both work.
+- **ContextVar:** trace id and user id are request-scoped, stamped on every log
+  line (including the `execute` write audit line) and returned as `X-Request-ID`.
+  Used for correlation only, never for authorization.
+- **Semaphore:** `/api/analyze` is capped per process (`MAX_CONCURRENT_ANALYSES`);
+  when saturated it answers 503 + `Retry-After` instead of queueing forever, and
+  the slot is taken before the daily-quota increment so shed requests cost nothing.
+
+Details, trade-offs and a known token-in-checkpoint issue: [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md).
+
+## Deployment
+
+Production is Vercel (frontend) + Render (API) + Pinecone + Postgres. Separately,
+a **non-production EKS learning deployment** exists, and the docs distinguish
+what was verified from what is only designed:
+
+- **Verified:** hardened non-root image, 2-replica Deployment with probes and
+  `maxUnavailable: 0`, digest-pinned ECR image, failed-rollout recovery via
+  `rollout undo`, an EKS cluster in `ap-southeast-2` running the app, and
+  exactly-once GitHub writes demonstrated against Postgres
+  (5 racing callers -> 1 comment).
+- **Designed, not deployed:** ALB + ACM + WAF, Secrets Manager, Pod Identity,
+  GitHub OIDC CI, HPA, PDB, NetworkPolicy, S3 Vectors retrieval.
+
+See [`docs/EKS_DEPLOYMENT.md`](docs/EKS_DEPLOYMENT.md) and
+[`docs/exactly-once/`](docs/exactly-once).
+
 ## Status
 
 | Piece | State |
@@ -197,7 +234,8 @@ the Roadmap. Conflating the two is a common mistake: a safety gate that
 | React frontend + FastAPI backend | ✅ Deployed (Vercel + Render), async backend, Postgres-checkpointed, live pipeline stepper. <details><summary>details</summary>`frontend/` (Vite + React + TypeScript) talks to `app/main.py` (FastAPI) over HTTP — the only deployed surface. Backend is fully async and uses `AsyncPostgresSaver` (a real Postgres instance) as its checkpointer — not local SQLite, which Render's free-tier ephemeral disk wipes on every spin-down/spin-up, silently losing any paused approval. `vercel.json` proxies `/api/*` to the Render backend so the session cookie is first-party to the browser, not a cross-site cookie Chrome would otherwise block. The UI renders a live pipeline stepper (`fetch → classify → diagnose → review → approve → execute`) computed directly from the same `GraphResult` the rest of the page renders — not decorative, and correctly shows `deterministic`/`human_review`/`escalate_to_human` paths as skipping steps they'll never reach, rather than stuck "pending" forever. Deployed: frontend on Vercel, backend on Render. Verified end-to-end on the live production URLs.</details> |
 | GitHub OAuth ("Sign in with GitHub") | ✅ Any visitor signs in with their own account; writes run as them, bounded by a per-user daily cap. <details><summary>details</summary>Any visitor can sign in with their own GitHub account; reads/writes then run as *them*, not the deployment owner's shared `GITHUB_TOKEN`. `app/db.py` adds a `sessions` table (opaque cookie -> real token, kept server-side), a `thread_owners` table (a paused run can only be resumed by the session that started it), and a per-user `analyze_calls` daily cap — all in the same Postgres as the checkpointer, on a separate connection pool. The owner's `OPENAI_API_KEY`/`PINECONE_API_KEY` still fund every diagnosis regardless of who's asking, which is exactly what the daily cap bounds.</details> |
 | `eval/` | ✅ Two-tier eval framework: <details><summary>safety gates + capability evals</summary>**Safety-gate regression suite** (`eval/harness.py`): `classify()`'s routing precedence, `independent_review()`'s groundedness/risk gate, `execute()`'s permission check + verbatim-posting (GitHub writes mocked — never real). Code-graded, `pass^k` semantics: 12/12 passing, and the bar is 100% forever (one bypassed gate across trials is a critical failure, not an average). Run with `uv run python -m eval.harness`.<br><br>**Capability eval suite** (`eval/capability_harness.py`, *new*): Tests `generate_diagnosis` output quality (severity enum, citation grounding, retrieval relevance) against real issues extracted from the Pinecone corpus. Model-graded, expected to improve over time, different bar from safety gates. Currently 6/6 passing. Run with `uv run python -m eval.capability_harness`. Extract fresh test cases from your corpus with `python -m eval.extract_real_test_cases` (re-run whenever you re-ingest).</details> |
-| Tests | ❌ Unit/integration tests not written yet. |
+| Concurrency | ✅ Async evidence fetch, request-scoped ContextVars, bounded analyze gate (see [Concurrency](#concurrency)). |
+| Tests | 🟡 `tests/test_concurrency.py` (18 tests) covers the concurrency layer; node-level and compiled-graph tests are still unwritten. |
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for the build history, and
 [`PLAN.md`](./PLAN.md) for the original 5-day/2-person plan this was
@@ -272,6 +310,19 @@ uv run pytest                                             # once tests exist
 
 Live: see the badges/links above. No local UI is needed to try it — the deployed frontend talks to the deployed backend directly.
 
+## Docs
+
+| Doc | Covers |
+|---|---|
+| [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) | asyncio, ContextVar, semaphore, GIL decisions |
+| [`docs/CHECKPOINTING.md`](docs/CHECKPOINTING.md) | Postgres checkpointing and resumable approval |
+| [`docs/CAP_THEOREM_AND_AGENTIC_SYSTEMS.md`](docs/CAP_THEOREM_AND_AGENTIC_SYSTEMS.md) | Consistency/availability trade-offs for agents |
+| [`docs/FEEDBACK_SYSTEM.md`](docs/FEEDBACK_SYSTEM.md) | Feedback loop design |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Render + Vercel deployment |
+| [`docs/EKS_DEPLOYMENT.md`](docs/EKS_DEPLOYMENT.md) | EKS learning deployment: verified vs designed |
+| [`docs/AWS_VECTOR_STORE_DESIGN.md`](docs/AWS_VECTOR_STORE_DESIGN.md) | Pinecone -> S3 Vectors/Bedrock design |
+| [`docs/GITHUB_SECRETS_SETUP.md`](docs/GITHUB_SECRETS_SETUP.md) | Actions secrets setup |
+
 ## Roadmap
 
 1. ✅ **Capability eval suite for `generate_diagnosis`** — model-graded diagnosis quality against real issues from the Pinecone corpus. Currently tests severity enum validity and citation grounding (no hallucinations). Extensible for retrieval quality, recommendation grounding, and consistency.
@@ -279,3 +330,4 @@ Live: see the badges/links above. No local UI is needed to try it — the deploy
 3. **CI/CD integration** — run both safety-gate and capability suites on every commit; set thresholds for gating deploys.
 4. **Live monitoring** — scheduled daily eval runs on production to catch regressions.
 5. Tests for the node functions and the compiled graph.
+6. Exactly-once resume in app code (design and demo in `docs/exactly-once/`), keep the OAuth token out of graph state/checkpoints, and a migration Job instead of per-replica schema setup.

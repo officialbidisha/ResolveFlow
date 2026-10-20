@@ -1,0 +1,132 @@
+\documentclass[10.5pt,letterpaper]{article}
+
+\usepackage[top=0.35in,bottom=0.35in,left=0.55in,right=0.55in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{lmodern}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\hypersetup{
+    colorlinks=true,
+    urlcolor=black,
+    linkcolor=black,
+    pdftitle={Bidisha Das Resume},
+    pdfauthor={Bidisha Das}
+}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titlespacing*{\section}{0pt}{8pt}{4pt}
+
+\setlist[itemize]{leftmargin=*, itemsep=2pt, topsep=2pt, parsep=0pt}
+
+\newcommand{\resumeItem}[1]{\item\small{#1}}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{4pt}\noindent
+  \begin{tabular*}{\textwidth}{l@{\extracolsep{\fill}}r}
+    \textbf{#1} & #2 \\
+    \textit{\small #3} & \textit{\small #4} \\
+  \end{tabular*}\vspace{-2pt}
+}
+
+\newcommand{\resumeProject}[2]{
+  \vspace{4pt}\noindent
+  \textbf{#1} \hfill \textit{\small #2}\vspace{1pt}
+}
+
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+% ----------- HEADER -----------
+\begin{center}
+    {\LARGE \textbf{Bidisha Das}}\\[2pt]
+    Senior Software Engineer \textbar\ Agentic SDLC \& Developer Platforms \textbar\ AI Agents, Distributed Systems \& LLM Infrastructure\\[2pt]
+    Bengaluru, India \textbar\ +91-6291354211 \textbar\ \href{mailto:officialbidisha1@gmail.com}{officialbidisha1@gmail.com} \textbar\
+    \href{https://linkedin.com/in/bidisha-das/}{linkedin.com/in/bidisha-das} \textbar\
+    \href{https://github.com/officialbidisha}{github.com/officialbidisha}
+\end{center}
+
+% ----------- SUMMARY -----------
+\section*{Professional Summary}
+Senior Software Engineer with nearly 6 years building production software systems and agentic SDLC platforms, including 2 years leading architecture and delivery of autonomous, agentic software development lifecycle capabilities at Company W and an independent LangGraph agent that diagnoses GitHub issues and executes human-approved writes. Builds AI agents that automate engineering tasks end to end -- orchestration patterns, safety guardrails, memory and state management, model routing, evaluation frameworks, and observability -- using LangGraph, LangChain, Model Context Protocol (MCP), Python, TypeScript, and Java. Measures and improves agent performance, latency, and correctness through structured evaluation suites, and writes clean, maintainable code supported by thorough code review. Security- and compliance-first practitioner: permission-aware execution, operation allowlists, structured tool contracts, prompt-injection hardening, and data governance. Delivered AI-driven workflows cutting manual turnaround \textbf{$\sim$92\%}, adopted across \textbf{10+ engineering teams}; mentors \textbf{5+ engineers} on AI and agentic patterns.
+
+% ----------- SKILLS -----------
+\section*{Technical Skills}
+\begin{itemize}
+    \resumeItem{\textbf{Agentic Software Development Lifecycle:} autonomous agents for engineering task automation, agent orchestration patterns, safety guardrails, tool/function calling, structured tool contracts, human-in-the-loop (HITL) approval workflows, durable pause/resume state (LangGraph interrupts), scoped write execution (OAuth-authorized), CI signal correlation, code-review \& investigation automation, Claude Code}
+    \resumeItem{\textbf{Agentic AI \& Orchestration:} LangGraph, LangChain, Model Context Protocol (MCP), multi-agent systems, memory \& state management, model routing}
+    \resumeItem{\textbf{LLM \& NLP / Retrieval Engineering:} large language models (LLMs), Retrieval Augmented Generation (RAG), adaptive \& corrective RAG, semantic search, vector retrieval strategies, reranking, chunking \& retrieval optimization, structured output extraction, prompt engineering, model selection \& token economics, OpenAI / Anthropic / open-weight APIs, Pinecone, ChromaDB, FAISS, embeddings}
+    \resumeItem{\textbf{Evaluation, Testing \& Safety:} AI evaluation frameworks, regression / retrieval / routing evaluation, latency \& cost analysis, groundedness \& hallucination reduction, model performance monitoring, guardrails, prompt-injection defense, input validation, output sanitization, permission-aware execution, data governance}
+    \resumeItem{\textbf{Languages:} Python, Go, TypeScript, JavaScript, Java, Apex, SQL}
+    \resumeItem{\textbf{Software Development Lifecycle \& Developer Tools:} CI/CD pipelines (GitHub Actions, Jenkins), Git-based workflows, code review, release management \& deployment automation, testing frameworks, observability tools (Splunk), performance monitoring, documentation \& reusable libraries/playbooks}
+    \resumeItem{\textbf{Distributed Systems \& Infrastructure:} AWS (Lambda, API Gateway, ECS), Docker, Kubernetes, Spring Boot, REST, GraphQL, microservices, distributed \& event-driven systems, system \& API design, enterprise architecture patterns}
+    \resumeItem{\textbf{Leadership:} architecture \& code reviews, root-cause analysis, mentoring junior/intermediate engineers on AI patterns, cross-functional collaboration with Product and AI/ML partners}
+\end{itemize}
+
+% ----------- EXPERIENCE -----------
+\section*{Professional Experience}
+
+\resumeSubheading{Company W}{Dec 2024 -- Present}{Senior Member of Technical Staff}{Bengaluru, India}
+\begin{itemize}
+    \resumeItem{Lead architecture and production delivery of five \textbf{autonomous, agentic software development lifecycle} workflows for access management, collapsing $\sim$60 days of manual processing into $\sim$5 days of self-service execution ($\sim$\textbf{92\% reduction}).}
+    \resumeItem{Designed a retrieval-to-action \textbf{agent orchestration} architecture where natural-language requests retrieve versioned Skills, enterprise metadata grounds agent planning, and permission-aware tools execute structured operations using MCP, REST APIs, Company W Metadata API and Tooling API, Java, Spring, and TypeScript; onboarded eight enterprise capabilities to Headless 360 across API exposure, tool discovery, and \textbf{MCP} execution, driving adoption and integration standards across \textbf{10+ engineering teams}.}
+    \resumeItem{Designed and shipped an LLM-powered Slack agent in Python and TypeScript (Slack Bolt SDK) giving stakeholders conversational, in-channel access to access-management workflows; interprets natural-language requests, grounds them in enterprise metadata, and executes structured operations behind \textbf{human-in-the-loop} approval so privileged actions run under the requesting user's own permissions -- serving \textbf{150+ users across 8 teams} and cutting turnaround from $\sim$20 minutes to under 3 minutes.}
+    \resumeItem{Implemented an \textbf{AI evaluation framework} covering retrieval quality, tool selection, permission enforcement, structured outputs, and failure paths, using representative cases and replayed production failures for regression detection; defined error-handling, fallback, and graceful-degradation patterns for non-deterministic agent behavior, keeping authorization and execution decisions deterministic in application code as a core \textbf{safety guardrail} for autonomous execution.}
+    \resumeItem{Championed security-first AI engineering: governed REST and metadata integrations with schema validation, input validation, and operation allowlists, cutting misconfigured access-management requests $\sim$35\%, in line with security, compliance, and data-governance standards.}
+    \resumeItem{Deployed and operated agent services on AWS, Docker, Kubernetes, and CI/CD with Splunk observability and event-driven infrastructure -- throughput up $\sim$40\% with stronger fault isolation; carried \textbf{on-call rotation} ownership for production agent services, debugging failures across distributed tracing, structured logs, and CI signals.}
+    \resumeItem{Partner with Product, architecture, platform, and security stakeholders to scope AI use cases and evaluate build-vs-buy tradeoffs; mentor \textbf{5+ engineers} through design and code reviews, growing their understanding of agentic and AI patterns.}
+\end{itemize}
+
+\resumeSubheading{Disney+ Hotstar}{Jan 2023 -- Dec 2024}{Software Development Engineer II}{Remote}
+\begin{itemize}
+    \resumeItem{Architected high-scale streaming experiences using React, Next.js, JavaScript, and Shaka Player across web and Living Room platforms, serving latency-sensitive, high-availability traffic.}
+    \resumeItem{Reduced player failure rate $\sim$70\% with a runtime mechanism that identified and dynamically blacklisted unreliable decoding layers -- graceful degradation under real-world failure conditions.}
+    \resumeItem{Contributed to Shaka Player (open source), resolving timestamp-handling defects that eliminated stream repetition during World Cup playback; built Web Worker-based playback reporting for real-time error collection and faster incident investigation.}
+\end{itemize}
+
+\resumeSubheading{MakeMyTrip}{Jun 2022 -- Jan 2023}{Senior Software Engineer}{Bengaluru, India}
+\begin{itemize}
+    \resumeItem{Delivered 3+ production workflows across loans, credit, and foreign exchange, translating financial and regulatory requirements into reliable customer experiences; cut application drop-off $\sim$25\% and API latency $\sim$30\%.}
+    \resumeItem{Integrated 5+ lending, credit-scoring, and forex APIs with standardized retry, validation, and error handling (transaction success +18\%); embedded KYC and RBI foreign-exchange controls into workflow logic, reducing manual review $\sim$40\%.}
+\end{itemize}
+
+\resumeSubheading{AutoRABIT}{Sep 2020 -- Jun 2022}{Software Developer}{Hyderabad, India}
+\begin{itemize}
+    \resumeItem{Built reusable platform components, internal dashboards, developer tooling, and automated test infrastructure inside Company W release-management and CI/CD workflows, improving release reliability $\sim$30\%.}
+\end{itemize}
+
+% ----------- PROJECTS -----------
+\section*{Selected AI Projects}
+
+\resumeProject{ResolveFlow -- Autonomous Agentic SDLC: Issue Diagnosis, Repository Analysis \& Human-Approved GitHub Remediation}{}
+\begin{itemize}
+    \resumeItem{Built a \textbf{LangGraph} engineering agent that automates a core software development lifecycle pipeline -- diagnosing GitHub issues from repository context, closed issues, pull requests, code evidence, and CI signals, then proposing a remediation for human-approved write-back -- over a RAG pipeline of $\sim$2,750 closed-issue chunks with measured relevance thresholds gating whether retrieved evidence may influence downstream reasoning.}
+    \resumeItem{Designed \textbf{agent orchestration} across deterministic automation, AI-assisted investigation, escalation, and human-approved writes, separating model reasoning from authorization; implemented independent LLM critique while keeping approve/escalate decisions deterministic in application code as a \textbf{safety guardrail}.}
+    \resumeItem{Implemented LangGraph interrupts with state persisted in Postgres for durable pause/resume HITL approval, plus GitHub OAuth so approved writes execute under the authenticated user's permissions -- write functions refuse execution without valid authorization.}
+    \resumeItem{Built a 50-scenario \textbf{evaluation suite} (normal, ambiguous, adversarial, failure-path) benchmarking OpenAI, Anthropic, and open-weight models on routing accuracy, behavior, and cost -- \textbf{86\% routing accuracy} at \textbf{24\% lower execution cost} than baseline, directly measuring agent performance, latency, and correctness.}
+\end{itemize}
+
+\resumeProject{AI Bug Triage Skill -- Company W Hackathon}{}
+\begin{itemize}
+    \resumeItem{Built a Claude Code workflow correlating Splunk logs, repository context, source changes, and work-management data into structured investigation reports with evidence, likely failure paths, and root-cause hypotheses -- cutting diagnostic-context collection from $\sim$90 minutes to $\sim$15 minutes.}
+\end{itemize}
+
+\resumeProject{AdaptiveRAG Evaluation Platform}{}
+\begin{itemize}
+    \resumeItem{Built a Python/AWS platform (Lambda, API Gateway, FAISS, React, Claude) comparing naive, reranked, corrective, and adaptive retrieval with query-classification routing over a 100-question evaluation set -- +12\% groundedness, --21\% token cost, --18\% median latency versus a fixed baseline.}
+\end{itemize}
+
+% ----------- EDUCATION -----------
+\section*{Education}
+\resumeSubheading{St. Thomas' College of Engineering \& Technology (MAKAUT)}{2020}{B.Tech, Computer Science \& Engineering}{West Bengal, India}
+
+\end{document}

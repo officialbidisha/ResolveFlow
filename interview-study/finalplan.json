@@ -1,0 +1,40 @@
+{
+    "executionPlan": {
+        "stages" : [
+            {
+                "stageId": "stage_1_find_user",
+                "execution_mode": "sertial",
+                "steps": [
+                    {
+                        "stepId": "step_1_find_user",
+                        "execution_mode": "serial",
+                        "steps": [
+                            {
+                                "stepId": "step_1_find_user",
+                                "tools": "FindUser",
+                                "inputs": {
+                                    "name": "Ravi"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "stageId": "stage_2_gather_assignments",
+                "execution_mode": "parallel", 
+                "steps": [
+                    {
+                        "stepId": "step_2_find_perm_sets",
+                        "tool": "FindPermissionSets",
+                        "inputs":{
+                            "userId": {
+                                "$ref": "step_1_find_user.userId"
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+}

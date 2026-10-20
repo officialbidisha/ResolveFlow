@@ -1,0 +1,112 @@
+//initialize handshake
+// client -> server
+{ 
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {
+            "sampling": {}
+        },
+        "clientinfo": {
+            "name": "my-agent-host",
+            "version": "1.1.0"
+        }
+    }
+}
+// Server -> client
+{
+    "jsonrpc": "2.0",
+    "id": 0,
+    "result": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {
+            "tools": {
+                "listChanged": true
+            },
+            "resources": {
+                 // Information the agent can read
+                "subscribe": true,
+                "listChanged": true
+            }
+        },
+        "serverInfo": {
+            "name": "saleforce-mcp-server",
+            "version": "0.4.1"
+        }
+    }
+}
+
+
+// What can the client pass vs what the server cna pass
+
+/**
+
+Client can send tool discovery: find available tools, Tool invocation: evecute the tool
+with arguments. Resource discovery: Discover available resources. 
+Resources retrieval: resources/read: read a source by uri
+Prompt discovery: promots/list
+Prompt retrieval: get a prompt with arguments
+Initialisation: Negotiate capabilities with protocol version.
+So , client sends the initialize, tool discovery, find tool, tool invoke with arguments, 
+prompt discovery and retrieval 
+Client has 3 things only - sampling, roots (permitted workspace roots or directories) , elicitation
+(asl the user for missing information or confirmation)
+
+Server can send: 
+a. Tool definition, b.tool results,c. resoources (1.uri, 2.metadata , 3.resource contents, 4.prompts, 
+5.notification, additonal input requests)
+
+Server advertises a tool
+{
+    "name" :"get_user_permission_sets",
+    "description": "retrieve an user's permission sets",
+    "input schema" : {
+        "type" : "objecty",
+        "propertoies" : {
+            "userid": {
+                "type": "string
+            }
+        },
+        "required": ["userid"]
+    }
+}
+
+-> server defines the contract anfd client supplies the arguments
+
+1. initialize  
+2. Client sends tools/list (paginated via cursor)
+3. Gets back tool definiton  - name, description, input scheme and output schema
+4. The client fills these up and calls the server with these filled up fields and fire a call
+5. Lastly and most importantly: the server returns the result.content array plus isError
+6. In case the server declared the tools.listChanged : true, during the initialization
+itcan later push a notifications/ tools/list_changed as well and the client should refetch
+the list. 
+6. Malformed calls come back error object inside result
+
+-> why is sampling usrful:
+1. It lets the server request a LLM Completion from the cliennt's model via sampling
+
+-> How does MCP handle backward compatibility?
+
+1. Capability negotiation ia s progressive feature addition: 
+a. Client/server pair only when both sides declares at initialize. 
+2. The transport level trnasition is a compatibility dance:
+a. Client first POSTs an initializerequest to the server url: if that fails with 4xx, ot falls
+back to issuing a GET expecting old-style SSE endpoint event. 
+b. Protocol version is carried by MCP-Protocol-Version HTTP Header on every request after
+initialzation: so a server can behave differently per negotiated version.
+
+*/
+
+
+/**
+*. 1. Design MCP server layer to be stateless in a true multi-tenant setting
+- Treat every requesr as independently authenticated and indcependently tenant scoprd
+- Mcp-Session-Id corelated a logical session for resumability/ notification but not used for
+authorization boundary - every tools/call and resources/read carries it own
+bearer credentials: Not against server's local memory
+- Tool execution itself talks to downstream Company W org APIs using per-tenant credentials.
+
+*/
