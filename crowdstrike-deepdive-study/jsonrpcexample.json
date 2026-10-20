@@ -1,0 +1,29 @@
+//Request (client-> server)
+
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call", 
+    "params": {
+
+        
+        "name": "get_weather",
+        "arguments": {"location": "New York"}
+    }
+}
+
+// Response (server->client)
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+        "content": [
+            {
+                "type": "text",
+                "text": "Current error in new york"
+
+            }
+        ], 
+        "isError": false
+    }
+}
