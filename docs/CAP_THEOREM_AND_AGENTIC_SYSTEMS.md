@@ -133,7 +133,7 @@ pending → in_progress → completed  (happy path)
 - Claim the key with state `pending` (atomic insert).
 - Transition to `in_progress` right before executing (still atomic, still the single writer who claimed it).
 - On success, write `completed` **plus the result**, in the same transaction/operation if possible.
-- Add a **reconciliation sweep**: a background job that finds rows stuck in `in_progress` past some timeout and decides — did the action actually happen (check the external system's own state, e.g. "is host X actually isolated") or not — before deciding to retry or alert a human. This is the part most candidates skip: **you cannot always tell, from your own state alone, whether a crashed action completed** — sometimes you have to go ask the system of record itself (query CrowdStrike's own host-isolation status, not your local dedupe table) to resolve the ambiguity. That's the honest, senior answer, not "just retry."
+- Add a **reconciliation sweep**: a background job that finds rows stuck in `in_progress` past some timeout and decides — did the action actually happen (check the external system's own state, e.g. "is host X actually isolated") or not — before deciding to retry or alert a human. This is the part most candidates skip: **you cannot always tell, from your own state alone, whether a crashed action completed** — sometimes you have to go ask the system of record itself (query the EDR vendor's own host-isolation status, not your local dedupe table) to resolve the ambiguity. That's the honest, senior answer, not "just retry."
 
 ---
 

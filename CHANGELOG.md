@@ -6,6 +6,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **EKS learning deployment and exactly-once write design (non-production).**
+  Hardened non-root image (`deploy/Dockerfile.k8s`), 2-replica Deployment with
+  startup/readiness/liveness probes and `maxUnavailable: 0`, digest-pinned ECR
+  image, and a cluster in `ap-southeast-2`. Verified failed-rollout recovery
+  (`rollout undo`) locally and on EKS. `docs/exactly-once/` demonstrates 5 racing
+  resume callers producing 1 GitHub comment. `docs/EKS_DEPLOYMENT.md` separates
+  verified from designed items and lists known app risks (plaintext OAuth token
+  in `sessions`/checkpoints, per-replica schema setup, Pinecone call at import).
+  Also `docs/AWS_VECTOR_STORE_DESIGN.md` and PDF study notes.
 - **Concurrency pass: async evidence fetch, request-scoped ContextVars, and
   a bounded analyze gate.** `fetch_evidence` had five sequential blocking
   GitHub calls; `afetch_evidence` runs the independent ones concurrently
