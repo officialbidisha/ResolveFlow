@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -34,8 +37,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+          if [ -z "$VERCEL_TOKEN" ]; then
             echo "⚠️  VERCEL_TOKEN not set. Skipping Vercel deployment."
             echo "To enable auto-deploy:"
             echo "1. Get Vercel token from https://vercel.com/account/tokens"
@@ -44,9 +51,6 @@ jobs:
           fi
 
           npm install -g vercel
-          export VERCEL_TOKEN=${{ secrets.VERCEL_TOKEN }}
-          export VERCEL_ORG_ID=${{ secrets.VERCEL_ORG_ID }}
-          export VERCEL_PROJECT_ID=${{ secrets.VERCEL_PROJECT_ID }}
           vercel deploy --prod --yes
         working-directory: ./
 
@@ -56,8 +60,11 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Deploy to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
         run: |
-          if [ -z "${{ secrets.RENDER_API_KEY }}" ] || [ -z "${{ secrets.RENDER_SERVICE_ID }}" ]; then
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
             echo "⚠️  RENDER_API_KEY or RENDER_SERVICE_ID not set. Skipping Render deployment."
             echo "To enable auto-deploy:"
             echo "1. Get Render API key from https://dashboard.render.com/account/api-tokens"
@@ -66,7 +73,7 @@ jobs:
             exit 0
           fi
 
-          curl -X POST https://api.render.com/deploy/srv-${{ secrets.RENDER_SERVICE_ID }}?key=${{ secrets.RENDER_API_KEY }}
+          curl -fsS -X POST "https://api.render.com/deploy/srv-${RENDER_SERVICE_ID}?key=${RENDER_API_KEY}" > /dev/null
 
   notification:
     needs: [deploy-frontend, deploy-backend]

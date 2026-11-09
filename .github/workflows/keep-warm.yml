@@ -13,6 +13,8 @@ on:
     - cron: "*/10 * * * *" # every 10 minutes
   workflow_dispatch: {} # allow a manual run from the Actions tab
 
+permissions: {} # only pings a public URL; needs no GITHUB_TOKEN scopes
+
 jobs:
   ping:
     runs-on: ubuntu-latest

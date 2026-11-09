@@ -17,6 +17,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   safety-gate:
     runs-on: ubuntu-latest
