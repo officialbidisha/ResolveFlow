@@ -20,7 +20,8 @@ Classification = Literal["deterministic", "ai_investigation", "human_review"]
 
 class GraphState(TypedDict, total=False):
     issue_url: str
-    github_token: str  # the logged-in visitor's own token; falls back to GITHUB_TOKEN if unset
+    # No credential field, deliberately: GraphState is persisted by the
+    # checkpointer. The acting user's token travels in graph/credentials.py.
     evidence: IssueEvidence
     classification: Classification
     diagnosis: Diagnosis

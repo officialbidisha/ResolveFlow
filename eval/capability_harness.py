@@ -6,34 +6,56 @@ Tests OUTPUT QUALITY, not safety gates. These evals measure:
 - Reasoning soundness
 - Retrieval relevance
 
-Unlike safety gates (harness.py: must be 100%), these improve over time.
-Expected to grow as new eval types are added.
+Unlike safety gates (harness.py: must be 100%), these improve over time,
+so the bar is a pass-rate threshold rather than 100%: CAPABILITY_PASS_THRESHOLD
+(default 0.8). Each case is graded by code (valid severity enum, citations
+that exist in the retrieved set) against a real model's output.
 
-Run with: python -m eval.capability_harness
+Exit codes:
+  0  evaluated, pass rate >= threshold
+  1  evaluated, pass rate below threshold (or a case crashed)
+  2  UNEVALUATED: provider credentials missing or no test cases. This is
+     deliberately not 0, so a run that never called the model can't look
+     like a pass.
+
+Run with: uv run python -m eval.capability_harness
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
-from typing import List
+from typing import Callable, List
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from eval.test_diagnosis_severity_valid import DiagnosisSeverityValidTest
-from eval.test_diagnosis_citations_no_hallucination import DiagnosisCitationsNoHallucinationTest
 from eval.real_test_cases import REAL_TEST_CASES
+
+PASS_THRESHOLD = float(os.environ.get("CAPABILITY_PASS_THRESHOLD", "0.8"))
+REQUIRED_ENV = ("OPENAI_API_KEY", "PINECONE_API_KEY")
+EXIT_OK, EXIT_BELOW_THRESHOLD, EXIT_UNEVALUATED = 0, 1, 2
+
+
+def _run_case(name: str, run: Callable[[], dict]) -> dict:
+    """A case that raises is a failed case, not a crashed suite."""
+    try:
+        return run()
+    except Exception as exc:  # noqa: BLE001 -- recorded as a failure with its error
+        return {"test": name, "passed": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
 def run_diagnosis_severity_tests() -> List[dict]:
     """Eval: Severity is valid enum (not arbitrary string)."""
+    from eval.test_diagnosis_severity_valid import DiagnosisSeverityValidTest
+
     results = []
     for i, evidence in enumerate(REAL_TEST_CASES):
         test = DiagnosisSeverityValidTest(evidence=evidence)
-        result = test.run()
+        result = _run_case(test.name, test.run)
         result["case"] = i  # Track which test case
         result["repo"] = evidence.repo
         result["issue"] = evidence.issue_number
@@ -43,10 +65,12 @@ def run_diagnosis_severity_tests() -> List[dict]:
 
 def run_diagnosis_citations_tests() -> List[dict]:
     """Eval: Citations don't hallucinate (all cite retrieved IDs)."""
+    from eval.test_diagnosis_citations_no_hallucination import DiagnosisCitationsNoHallucinationTest
+
     results = []
     for i, evidence in enumerate(REAL_TEST_CASES):
         test = DiagnosisCitationsNoHallucinationTest(evidence=evidence)
-        result = test.run()
+        result = _run_case(test.name, test.run)
         result["case"] = i
         result["repo"] = evidence.repo
         result["issue"] = evidence.issue_number
@@ -54,57 +78,50 @@ def run_diagnosis_citations_tests() -> List[dict]:
     return results
 
 
-def main() -> None:
-    """Run all capability evals and report results."""
+def main() -> int:
+    """Run all capability evals and report results. Returns the exit code."""
     print("=" * 70)
     print("CAPABILITY EVALUATION SUITE")
     print("=" * 70)
 
-    # Run all eval suites
-    severity_results = run_diagnosis_severity_tests()
-    citations_results = run_diagnosis_citations_tests()
+    missing = [name for name in REQUIRED_ENV if not os.environ.get(name)]
+    if missing or not REAL_TEST_CASES:
+        reason = f"missing {', '.join(missing)}" if missing else "no test cases in eval/real_test_cases.py"
+        print(f"\nUNEVALUATED: {reason}. No model was called; this is not a pass.")
+        return EXIT_UNEVALUATED
 
-    all_results = severity_results + citations_results
+    all_results = run_diagnosis_severity_tests() + run_diagnosis_citations_tests()
 
-    # Print results
     print()
     passed_count = 0
     for r in all_results:
         mark = "✓ PASS" if r["passed"] else "✗ FAIL"
-        repo = r.get("repo", "?")
-        issue = r.get("issue", "?")
-        print(f"{mark} | {r['test']:<35} | {repo}#{issue}")
-
+        print(f"{mark} | {r['test']:<35} | {r.get('repo', '?')}#{r.get('issue', '?')}")
         if not r["passed"]:
-            # Show details for failures
-            if "invalid_citations" in r and r["invalid_citations"]:
+            if r.get("error"):
+                print(f"        Error: {r['error']}")
+            if r.get("invalid_citations"):
                 print(f"        Hallucinated IDs: {r['invalid_citations']}")
             if "severity" in r:
                 print(f"        Severity: {r['severity']}")
+        passed_count += bool(r["passed"])
 
-        if r["passed"]:
-            passed_count += 1
-
-    # Summary
     total = len(all_results)
+    rate = passed_count / total
     print()
     print("=" * 70)
-    print(f"SUMMARY: {passed_count}/{total} passed ({(passed_count/total)*100:.1f}%)")
+    print(f"SUMMARY: {passed_count}/{total} passed ({rate:.1%}); threshold {PASS_THRESHOLD:.0%}")
     print("=" * 70)
 
-    # Save results
     output_file = Path(__file__).parent / "capability_results.json"
     output_file.write_text(json.dumps(all_results, indent=2))
     print(f"\nResults saved to: {output_file}")
 
-    # Exit code: 0 if all pass, 1 if any fail
-    # (You might want to lower this threshold for capability evals)
-    if passed_count != total:
-        print(f"\n⚠️  {total - passed_count} test(s) failed")
-        return 0  # Don't fail CI for capability evals yet (they improve over time)
-    else:
-        print(f"\n✅ All {total} capability tests passed!")
-        return 0
+    if rate < PASS_THRESHOLD:
+        print(f"\nBELOW THRESHOLD: {rate:.1%} < {PASS_THRESHOLD:.0%}")
+        return EXIT_BELOW_THRESHOLD
+    print(f"\nAt or above threshold ({rate:.1%} >= {PASS_THRESHOLD:.0%})")
+    return EXIT_OK
 
 
 if __name__ == "__main__":

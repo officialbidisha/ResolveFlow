@@ -22,7 +22,7 @@ The `.github/workflows/deploy.yml` workflow automatically:
 ```
 Push to main
     ↓
-Run eval.harness (12/12 safety gates)
+Run eval.harness (13/13 safety gates)
     ↓
 Deploy frontend + backend (if passing)
     ↓

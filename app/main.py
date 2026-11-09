@@ -60,15 +60,16 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from langgraph.types import Command
-from psycopg_pool import AsyncConnectionPool
+from psycopg_pool import AsyncConnectionPool, ConnectionPool
 from pydantic import BaseModel
 
 from app import db
 from app.limits import AnalysisGate, GateBusy
-from graph import request_context
+from graph import credentials, request_context
 from graph.build import graph
+from graph.resume import NothingToResume, aresume_or_retry
 from graph.serde import get_serde
+from tools import side_effects
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 FRONTEND_URL = os.environ["FRONTEND_URL"]
@@ -103,10 +104,22 @@ async def lifespan(app: FastAPI):
         await saver.setup()
         await pool.open()
         await db.setup(pool)
+        # Sync pool for tools/side_effects.py: execute() is a sync node running
+        # in a worker thread, so it can't use the async pool above.
+        ledger_pool = ConnectionPool(
+            DATABASE_URL, min_size=1, max_size=4, open=False, check=ConnectionPool.check_connection
+        )
+        ledger_pool.open()
+        ledger = side_effects.PostgresSideEffectStore(ledger_pool)
+        ledger.setup()
+        side_effects.configure(ledger)
         _state["compiled_graph"] = graph.compile(checkpointer=saver)
         _state["pool"] = pool
         _state["analysis_gate"] = AnalysisGate(MAX_CONCURRENT_ANALYSES, ANALYZE_QUEUE_WAIT_SECONDS)
-        yield
+        try:
+            yield
+        finally:
+            ledger_pool.close()
     _state.clear()
 
 
@@ -288,9 +301,10 @@ async def analyze(req: AnalyzeRequest, user: db.SessionUser = Depends(current_us
             config = {"configurable": {"thread_id": thread_id}}
             log.info("analyze start thread=%s issue=%s", thread_id, req.issue_url)
             try:
-                result = await _state["compiled_graph"].ainvoke(
-                    {"issue_url": req.issue_url, "github_token": user.github_token}, config
-                )
+                # The token is bound for this request only, never passed as
+                # graph input or config: both are persisted in checkpoints.
+                with credentials.acting_as(user.github_token):
+                    result = await _state["compiled_graph"].ainvoke({"issue_url": req.issue_url}, config)
             except Exception as exc:  # noqa: BLE001 -- surfacing any pipeline failure to the client is the point
                 log.warning("analyze failed thread=%s: %s", thread_id, exc)
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -311,7 +325,14 @@ async def resume(thread_id: str, req: ResumeRequest, user: db.SessionUser = Depe
 
     config = {"configurable": {"thread_id": thread_id}}
     try:
-        result = await _state["compiled_graph"].ainvoke(Command(resume=req.approved), config)
+        # The write runs as the user making *this* request, resolved from the
+        # session just now, not from anything saved with the paused run.
+        with credentials.acting_as(user.github_token):
+            result = await aresume_or_retry(_state["compiled_graph"], config, req.approved)
+    except credentials.MissingCredential as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except NothingToResume as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return _serialize(thread_id, result)

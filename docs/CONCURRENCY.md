@@ -77,10 +77,16 @@ non-printable characters (newlines), so it cannot forge log lines.
 - `/api/resume` is deliberately not gated: a human already approved, the work is
   light, and shedding it would strand an approved action.
 
-## Known issue found while doing this (not changed here)
+## Token-in-checkpoint issue (resolved)
 
-`github_token` is part of `GraphState` and is passed as input to `ainvoke`, so
-LangGraph's Postgres checkpointer persists the user's GitHub OAuth token in the
-checkpoint tables, in addition to `sessions.github_token`. Consider keeping the
-token out of graph state (look it up from the session inside `execute`, or pass it
-via `config["configurable"]`), and encrypting or expiring it at rest.
+`github_token` used to be part of `GraphState` and was passed as input to
+`ainvoke`, so LangGraph's Postgres checkpointer persisted the user's GitHub OAuth
+token in the checkpoint tables. It is now bound per request in
+`graph/credentials.py` (a ContextVar, which propagates into the executor threads
+like the trace id above) and read by `execute()` at write time. It is not passed
+through `config["configurable"]` either, because LangGraph copies configurable
+values into checkpoint metadata. `tests/test_approval_path.py` and
+`eval/harness.py` scan the checkpointer's stored bytes for the token.
+
+Still open: `sessions.github_token` is plaintext at rest, and checkpoint rows
+written before this change still contain tokens until those threads are deleted.

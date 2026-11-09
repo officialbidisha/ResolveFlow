@@ -29,3 +29,8 @@ dev = [
     "pytest-mock>=3.14",
     "black>=25.0",
 ]
+
+[tool.pytest.ini_options]
+# Tests import app/, graph/, tools/, eval/ from the repo root.
+pythonpath = ["."]
+testpaths = ["tests"]

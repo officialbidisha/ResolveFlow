@@ -1,0 +1,83 @@
+name: CI
+
+# safety-gate: runs on every pull request and push, with no external calls
+# (GitHub is the in-process fake, independent_review's one LLM call is
+# stubbed, Postgres is a service container). Make it a required status check
+# on main so a broken permission rule cannot merge:
+#   Settings -> Branches -> Branch protection rule for main ->
+#   Require status checks to pass -> select "safety-gate".
+#
+# capability-evals: provider-backed, so it runs only where secrets exist
+# (push to main, manual dispatch). Missing secrets make it fail visibly as
+# UNEVALUATED (exit 2) instead of passing silently.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  safety-gate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -q uv
+          uv sync
+
+      - name: Safety-gate suite (offline, 100% bar)
+        run: uv run python -m eval.harness --offline
+
+      - name: Approval-path and concurrency tests (in-memory + Postgres ledger)
+        run: uv run pytest -q
+
+  capability-evals:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      CAPABILITY_PASS_THRESHOLD: '0.8'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -q uv
+          uv sync
+
+      - name: Capability evals (threshold-gated)
+        run: |
+          set +e
+          uv run python -m eval.capability_harness
+          code=$?
+          if [ "$code" -eq 2 ]; then
+            echo "::error title=Capability evals UNEVALUATED::provider credentials missing; no model was called"
+            echo "## Capability evals: UNEVALUATED (missing provider credentials)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit $code
