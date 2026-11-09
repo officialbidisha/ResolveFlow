@@ -40,9 +40,9 @@ image signing/admission control, Bedrock / S3 Vectors retrieval (see `docs/AWS_V
 ## Known app risks this exposed (not yet fixed in app code)
 
 - Concurrent/replayed resume can post a GitHub comment twice -> design in `docs/exactly-once/`.
-- GitHub OAuth token is stored in plaintext in `sessions` and inside LangGraph checkpoints.
+- GitHub OAuth token is stored in plaintext in `sessions`. (It is no longer written into LangGraph checkpoints; see `docs/CONCURRENCY.md`.)
 - Every replica runs schema setup at boot (needs a migration Job or advisory lock).
-- `tools/retrieval.py` calls Pinecone at import time, so a Pinecone outage crash-loops pods.
+- ~~`tools/retrieval.py` calls Pinecone at import time~~: now initialized on first use, so a Pinecone outage fails diagnoses instead of crash-looping pods.
 - `/api/health` does not check Postgres; readiness and liveness should be separate.
 
 ## Commands

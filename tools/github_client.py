@@ -6,7 +6,12 @@ pipeline that talks to a real external system, so its failure modes (rate
 limits, 404s, auth errors) need to stay visible, not wrapped away behind a
 general-purpose SDK. Every write operation (post_comment, add_label) is a
 distinct, auditable function — graph/nodes/execute.py may only ever call
-these, never construct a request itself.
+these (through tools/side_effects.py), never construct a request itself.
+
+Reads fall back to the deployment's shared GITHUB_TOKEN when no token is
+passed (ingest.py and local scripts depend on that). Writes do not: a write
+must name the credential it acts as, so a missing user token can never
+silently turn into a write under the deployment owner's identity.
 """
 
 from __future__ import annotations
@@ -23,6 +28,13 @@ def _headers(token: str | None = None) -> dict:
     token = token or os.environ.get("GITHUB_TOKEN")
     if not token:
         raise RuntimeError("GITHUB_TOKEN is not set and no per-request token was given")
+    return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+
+
+def _write_headers(token: str | None) -> dict:
+    """Writes never fall back to the shared GITHUB_TOKEN."""
+    if not token:
+        raise PermissionError("GitHub writes require an explicit acting-user token")
     return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
 
 
@@ -66,6 +78,31 @@ def get_comments(repo: str, issue_number: int, token: str | None = None) -> list
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def list_issue_comments(repo: str, issue_number: int, token: str | None = None, max_pages: int = 50) -> list[dict]:
+    """Every comment on the issue, following pagination to the end.
+
+    get_comments() returns only the first (oldest) page, which is fine for
+    evidence but wrong for reconciliation: tools/side_effects.py looks for
+    its own marker comment, which is usually among the newest. Raises if the
+    issue has more than max_pages pages rather than returning a partial list
+    that could make a posted comment look absent.
+    """
+    comments: list[dict] = []
+    for page in range(1, max_pages + 1):
+        resp = requests.get(
+            f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/comments",
+            headers=_headers(token),
+            params={"per_page": 100, "page": page},
+            timeout=TIMEOUT,
+        )
+        resp.raise_for_status()
+        batch = resp.json()
+        comments.extend(batch)
+        if len(batch) < 100:
+            return comments
+    raise RuntimeError(f"{repo}#{issue_number} has more than {max_pages * 100} comments; refusing a partial scan")
 
 
 def get_check_runs(repo: str, ref: str, token: str | None = None) -> list[dict]:
@@ -125,7 +162,7 @@ def get_codeowners(repo: str, token: str | None = None) -> str | None:
 def post_comment(repo: str, issue_number: int, body: str, token: str | None = None) -> dict:
     resp = requests.post(
         f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/comments",
-        headers=_headers(token),
+        headers=_write_headers(token),
         json={"body": body},
         timeout=TIMEOUT,
     )
@@ -136,7 +173,7 @@ def post_comment(repo: str, issue_number: int, body: str, token: str | None = No
 def add_label(repo: str, issue_number: int, label: str, token: str | None = None) -> dict:
     resp = requests.post(
         f"{GITHUB_API}/repos/{repo}/issues/{issue_number}/labels",
-        headers=_headers(token),
+        headers=_write_headers(token),
         json={"labels": [label]},
         timeout=TIMEOUT,
     )

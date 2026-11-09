@@ -48,7 +48,7 @@ def fake_github(monkeypatch):
     return calls
 
 
-STATE = {"issue_url": "https://github.com/acme/widgets/issues/7", "github_token": "tok"}
+STATE = {"issue_url": "https://github.com/acme/widgets/issues/7"}
 
 
 # --- asyncio fan-out -------------------------------------------------------

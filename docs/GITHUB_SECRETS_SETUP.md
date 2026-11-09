@@ -148,7 +148,7 @@ Once secrets are set:
 ```
 Push to main
     ↓
-eval.harness runs (12/12 safety gates)
+eval.harness runs (13/13 safety gates)
     ↓
 If PASSING:
   ├─ vercel deploy → Frontend goes live

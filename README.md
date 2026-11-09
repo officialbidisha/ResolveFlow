@@ -161,9 +161,11 @@ detail, with a sequence diagram.
 ### Writes run as the person who approved them
 
 The live app lets any GitHub user sign in and drive an analysis — reads
-and writes for that run use *their* OAuth token
-(`state["github_token"]`), not one shared credential belonging to the
-deployment owner. That's not just an auth nicety: it's what makes "the
+and writes for that run use *their* OAuth token, not one shared credential
+belonging to the deployment owner. The token is bound per request from the
+server-side session (`graph/credentials.py`); it is never part of graph state,
+so it never lands in a checkpoint, and a write with no user credential is
+refused rather than falling back to the deployment's `GITHUB_TOKEN`. That's not just an auth nicety: it's what makes "the
 person approving this posted it" a statement GitHub itself can verify,
 rather than something ResolveFlow merely claims in its UI. It also means
 GitHub's own permission model does real work for free — a visitor
@@ -202,7 +204,7 @@ multiprocessing. Three deliberate primitives, each with a test:
   when saturated it answers 503 + `Retry-After` instead of queueing forever, and
   the slot is taken before the daily-quota increment so shed requests cost nothing.
 
-Details, trade-offs and a known token-in-checkpoint issue: [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md).
+Details and trade-offs: [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md).
 
 ## Deployment
 
@@ -233,7 +235,7 @@ See [`docs/EKS_DEPLOYMENT.md`](docs/EKS_DEPLOYMENT.md) and
 | `execute` + human approval gate | ✅ Real `interrupt()` pause, resumed via `Command(resume=...)`, verified byte-for-byte end-to-end. <details><summary>details</summary>`await_approval` builds the proposed comment/label and pauses via `interrupt()`; every path to `execute` goes through it. `execute` posts that exact payload via `tools/github_client.py`, gated on `state["approved"]`. The deployed FastAPI backend drives the real approve/reject flow via `Command(resume=...)`, checkpointed with `AsyncPostgresSaver`. Verified end-to-end (mocked GitHub reads/writes, real OpenAI + Pinecone calls): interrupt payload and posted content match exactly. See [`docs/CHECKPOINTING.md`](./docs/CHECKPOINTING.md) for the resume mechanism in detail, with a sequence diagram.</details> |
 | React frontend + FastAPI backend | ✅ Deployed (Vercel + Render), async backend, Postgres-checkpointed, live pipeline stepper. <details><summary>details</summary>`frontend/` (Vite + React + TypeScript) talks to `app/main.py` (FastAPI) over HTTP — the only deployed surface. Backend is fully async and uses `AsyncPostgresSaver` (a real Postgres instance) as its checkpointer — not local SQLite, which Render's free-tier ephemeral disk wipes on every spin-down/spin-up, silently losing any paused approval. `vercel.json` proxies `/api/*` to the Render backend so the session cookie is first-party to the browser, not a cross-site cookie Chrome would otherwise block. The UI renders a live pipeline stepper (`fetch → classify → diagnose → review → approve → execute`) computed directly from the same `GraphResult` the rest of the page renders — not decorative, and correctly shows `deterministic`/`human_review`/`escalate_to_human` paths as skipping steps they'll never reach, rather than stuck "pending" forever. Deployed: frontend on Vercel, backend on Render. Verified end-to-end on the live production URLs.</details> |
 | GitHub OAuth ("Sign in with GitHub") | ✅ Any visitor signs in with their own account; writes run as them, bounded by a per-user daily cap. <details><summary>details</summary>Any visitor can sign in with their own GitHub account; reads/writes then run as *them*, not the deployment owner's shared `GITHUB_TOKEN`. `app/db.py` adds a `sessions` table (opaque cookie -> real token, kept server-side), a `thread_owners` table (a paused run can only be resumed by the session that started it), and a per-user `analyze_calls` daily cap — all in the same Postgres as the checkpointer, on a separate connection pool. The owner's `OPENAI_API_KEY`/`PINECONE_API_KEY` still fund every diagnosis regardless of who's asking, which is exactly what the daily cap bounds.</details> |
-| `eval/` | ✅ Two-tier eval framework: <details><summary>safety gates + capability evals</summary>**Safety-gate regression suite** (`eval/harness.py`): `classify()`'s routing precedence, `independent_review()`'s groundedness/risk gate, `execute()`'s permission check + verbatim-posting (GitHub writes mocked — never real). Code-graded, `pass^k` semantics: 12/12 passing, and the bar is 100% forever (one bypassed gate across trials is a critical failure, not an average). Run with `uv run python -m eval.harness`.<br><br>**Capability eval suite** (`eval/capability_harness.py`, *new*): Tests `generate_diagnosis` output quality (severity enum, citation grounding, retrieval relevance) against real issues extracted from the Pinecone corpus. Model-graded, expected to improve over time, different bar from safety gates. Currently 6/6 passing. Run with `uv run python -m eval.capability_harness`. Extract fresh test cases from your corpus with `python -m eval.extract_real_test_cases` (re-run whenever you re-ingest).</details> |
+| `eval/` | ✅ Two-tier eval framework: <details><summary>safety gates + capability evals</summary>**Safety-gate regression suite** (`eval/harness.py`): `classify()`'s routing precedence, `independent_review()`'s groundedness/risk gate, `execute()`'s approval check, its refusal to write without a user credential, verbatim exactly-once posting, and a scan proving no checkpoint contains the user's token (GitHub is an in-process fake — never real). Code-graded, `pass^k` semantics: 13/13 passing, and the bar is 100% forever (one bypassed gate across trials is a critical failure, not an average). Run with `uv run python -m eval.harness` (or `--offline`, which stubs the one LLM call; that is how PR CI runs it).<br><br>**Capability eval suite** (`eval/capability_harness.py`, *new*): Tests `generate_diagnosis` output quality (severity enum, citation grounding, retrieval relevance) against real issues extracted from the Pinecone corpus. Code-graded assertions on real model output, expected to improve over time, so the bar is a pass-rate threshold (`CAPABILITY_PASS_THRESHOLD`, default 80%) rather than 100%; missing provider credentials exit 2 as UNEVALUATED, never as a pass. Last recorded run: 6/6. Run with `uv run python -m eval.capability_harness`. Extract fresh test cases from your corpus with `python -m eval.extract_real_test_cases` (re-run whenever you re-ingest).</details> |
 | Concurrency | ✅ Async evidence fetch, request-scoped ContextVars, bounded analyze gate (see [Concurrency](#concurrency)). |
 | Tests | 🟡 `tests/test_concurrency.py` (18 tests) covers the concurrency layer; node-level and compiled-graph tests are still unwritten. |
 
@@ -273,12 +275,12 @@ ResolveFlow has **two kinds of evals**, each with its own bar and semantics:
 uv run python -m eval.harness
 ```
 
-Tests the hard boundaries: `classify()`'s routing, `independent_review()`'s gates, `execute()`'s permission check. Each test has one unambiguous correct answer. Failures indicate the system weakened, not that it needs more training data.
+Tests the hard boundaries: `classify()`'s routing, `independent_review()`'s gates, `execute()`'s approval and credential checks, exactly-once posting, and checkpoint contents. Each test has one unambiguous correct answer. Failures indicate the system weakened, not that it needs more training data. Runs on every pull request (`.github/workflows/ci.yml`, `--offline`) alongside `tests/`, which drive the real approval/resume path against a simulated GitHub API.
 
-**Current:** 12/12 passing
+**Current:** 13/13 passing
 
 ### Capability Evals
-**Bar:** Model-graded, expected to improve over time.
+**Bar:** Code-graded assertions on real model output; pass rate must meet `CAPABILITY_PASS_THRESHOLD` (default 80%). Exit 2 means UNEVALUATED (no provider credentials), not a pass.
 
 ```bash
 # Extract real test cases from your Pinecone corpus

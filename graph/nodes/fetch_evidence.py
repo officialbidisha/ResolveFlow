@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import re
 
+from graph import credentials
 from graph.state import GraphState
 from tools import github_client
 
@@ -36,7 +37,7 @@ def fetch_evidence(state: GraphState) -> dict:
     sync callers (graph.invoke, the eval harness); the deployed async path
     uses afetch_evidence below, and graph/build.py registers both."""
     repo, issue_number = _parse_issue_url(state["issue_url"])
-    token = state.get("github_token")
+    token = credentials.current_token()  # None -> shared GITHUB_TOKEN (reads only)
 
     linked_pr = github_client.get_linked_pull_request(repo, issue_number, token=token)
     check_runs = (
@@ -82,7 +83,7 @@ async def afetch_evidence(state: GraphState) -> dict:
     stragglers finish is harmless.
     """
     repo, issue_number = _parse_issue_url(state["issue_url"])
-    token = state.get("github_token")
+    token = credentials.current_token()  # None -> shared GITHUB_TOKEN (reads only)
 
     async def pr_then_checks() -> list:
         linked_pr = await asyncio.to_thread(

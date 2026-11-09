@@ -5,6 +5,36 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+- **User credentials no longer reach checkpoints.** `github_token` is gone from
+  `GraphState` and from `ainvoke` input. The API binds the signed-in user's token
+  per request (`graph/credentials.py`), and `execute()` resolves it at write time
+  from the request that is running it, so a resumed run writes as the user who
+  resumed it. GitHub write functions no longer fall back to the shared
+  `GITHUB_TOKEN`; with no user credential, `execute()` raises `MissingCredential`
+  and makes zero writes (the API answers 401). Checkpoints written before this
+  change still hold tokens until those threads are deleted.
+
+### Fixed
+- **Approval flow is safe to retry.** `execute()` now records the comment and the
+  label as separate operations in Postgres (`tools/side_effects.py`, table
+  `github_side_effects`), promoting `docs/exactly-once/` into the real path.
+  Concurrent resumes post one comment; a worker that dies after GitHub accepts
+  the comment is reconciled by an invisible marker comment instead of reposting;
+  a label failure is recorded on its own row and never loses the comment result.
+  `graph/resume.py` re-runs a pending `execute` when there is no interrupt left
+  to answer, and `/api/resume` uses it (409 when there is nothing to resume).
+- **Evals now block bad PRs.** New `.github/workflows/ci.yml` runs the safety-gate
+  suite offline (`eval.harness --offline`: GitHub faked, the one LLM call stubbed)
+  and `pytest` with a Postgres service on every pull request; make `safety-gate` a
+  required check. The capability harness used to exit 0 even when assertions
+  failed; it now enforces `CAPABILITY_PASS_THRESHOLD` (default 0.8) and exits 2
+  as UNEVALUATED when provider credentials are missing.
+- `tools/retrieval.py` no longer calls Pinecone at import time, so the graph
+  imports offline (tests, PR CI) and a Pinecone outage can't crash-loop the API.
+- Docs: the safety-gate count is 13/13 (it read 12/12 while 11 cases existed);
+  capability evals are described as code-graded, not model-graded.
+
 ### Added
 - **EKS learning deployment and exactly-once write design (non-production).**
   Hardened non-root image (`deploy/Dockerfile.k8s`), 2-replica Deployment with
