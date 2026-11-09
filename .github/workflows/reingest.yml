@@ -13,6 +13,9 @@ on:
     - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
   workflow_dispatch: {} # allow a manual run from the Actions tab
 
+permissions:
+  contents: read
+
 jobs:
   reingest:
     runs-on: ubuntu-latest
